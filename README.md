@@ -1,5 +1,5 @@
 # SimdHash
-
+```
 SimdHash, build: 1023, Date: Apr 21 2025 16:50:18
 Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz, Comet Lake (Core i7), 8/16, 3.792GHz
 
@@ -28,3 +28,4 @@ SimdHash.exe rnd [32|64|128|256]
 
 SimdHash.exe selftest
 run set of internal tests
+```

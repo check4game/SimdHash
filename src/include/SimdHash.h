@@ -1,16 +1,6 @@
 #ifndef __SIMDHASH_H__
 #define __SIMDHASH_H__
 
-#include <stdint.h>
-#include <array>
-#include <memory>
-#include <string>
-
-#include <type_traits>
-#include <map>
-#include <set>
-#include <utility>
-
 #include <intrin.h>
 
 #if defined(NDEBUG)

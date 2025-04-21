@@ -1,6 +1,8 @@
 #ifndef __BENCHHASH_H__
 #define __BENCHHASH_H__
 
+#include "SimdHash.h"
+
 #include <stdint.h>
 #include <chrono>
 #include <regex>
@@ -19,7 +21,6 @@
 #define EMH_SIZE_TYPE 0
 #include "hash_table8.hpp"
 
-#include "SimdHash.h"
 
 #if defined(NDEBUG)
 #undef NDEBUG

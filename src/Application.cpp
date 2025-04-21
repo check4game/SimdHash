@@ -1,15 +1,5 @@
 #include <iostream>
 #include <vector>
-#include <iomanip>
-#include <locale>
-#include <chrono>
-#include <algorithm>
-
-#include <map>
-#include <typeindex>
-#include <typeinfo>
-
-#include "SimdHash.h"
 
 #if defined(NDEBUG)
 #undef NDEBUG
@@ -22,8 +12,6 @@
 #pragma comment(lib, "libs/abseil-cpp.lib")
 
 #define RUN_TEST(expression) assert(expression); std::cout << "OK, "<< #expression << std::endl
-
-using namespace std::chrono;
 
 extern void GetDataSet(const std::string& filename, std::vector<uint64_t>& data_set, uint32_t TypeSequential, bool bShuffle);
 extern void GenerateDataSet(const std::string& filename, uint64_t data_set_size);

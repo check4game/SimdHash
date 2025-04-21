@@ -12,6 +12,9 @@
     <Filter Include="Libs">
       <UniqueIdentifier>{10d4d5ce-f3f2-41c9-a7e5-12e5becbf1db}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Results">
+      <UniqueIdentifier>{88e37e35-78a2-4976-8b7b-2f6a7063527b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Application.cpp">

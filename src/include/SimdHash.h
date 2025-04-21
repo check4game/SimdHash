@@ -217,11 +217,11 @@ namespace MZ
                 return _ptr[index];
             }
 
-            uint8_t* begin() const { return _ptr; }
+            __forceinline uint8_t* begin() const { return _ptr; }
 
-            uint8_t* end() const { return _ptr + _size; }
+            __forceinline uint8_t* end() const { return _ptr + _size; }
 
-            uint8_t* data() const { return _ptr; }
+            __forceinline const uint8_t* data() const { return _ptr; }
 
             template<bool bUseStd = false>
             void Init()

@@ -1,4 +1,7 @@
 # SimdHash
+
+MZ::SimdHash:Map is now the fastest hashmap for uint64_t/uint32_t
+
 ```
 SimdHash, build: 1023, Date: Apr 21 2025 16:50:18
 Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz, Comet Lake (Core i7), 8/16, 3.792GHz

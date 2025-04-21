@@ -26,54 +26,7 @@ namespace MZ
     namespace SimdHash
     {
         static constexpr uint32_t Build = 1023;
-
-        static bool IsPrime(uint64_t num)
-        {
-            if (num <= 1) return false;
-
-            if (num < 4) return true;
-
-            if (num % 2 == 0 || num % 3 == 0) return false;
-
-            for (uint64_t i = 5; i * i <= num; i = i + 6) 
-            {
-                if (num % i == 0 || num % (i + 2) == 0)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static uint64_t GetPrevPrime(uint64_t num)
-        {
-            if (num <= 2) return 2;
-            if (num == 3) return 3;
-
-            for (uint64_t i = num | 1; true; i-=2)
-            {
-                if (IsPrime(i)) return i;
-            }
-
-            return 2;
-        }
-
-        static uint64_t GetNextPrime(uint64_t num, uint64_t max)
-        {
-            if (!IsPrime(max))
-            {
-                max = GetPrevPrime(max);
-            }
-
-            for (uint64_t i = num | 1; i < max; i += 2)
-            {
-                if (IsPrime(i)) return i;
-            }
-
-            return max;
-        }
-
+       
         static __forceinline const uint32_t ResetLowestSetBit(const uint32_t value)
         {
             return value & (value - 1);
@@ -280,7 +233,7 @@ namespace MZ
 
             uint8_t* data() const { return _ptr; }
 
-            template<bool bUseStd = true>
+            template<bool bUseStd = false>
             void Init()
             {
                 if constexpr (bUseStd)
@@ -328,16 +281,15 @@ namespace MZ
             uint8_t* _ptr = nullptr;
         };
 
-        template<typename T>
-        constexpr uint32_t count_zero(T value)
+        constexpr int CalcShift(uint32_t x)
         {
-            static_assert(std::is_unsigned_v<T>, "count_zero requires an unsigned integer type");
+            if (x == 0) return 32;
+            int count = 0;
 
-            uint32_t count = 0;
-
-            while ((value & 1) == 0 && count < sizeof(T) * 8)
+            while ((x & 1) == 0)
             {
-                value >>= 1; ++count;
+                x >>= 1;
+                count++;
             }
 
             return count;
@@ -346,7 +298,7 @@ namespace MZ
         template<typename TEntry, uint32_t TPageSize = 4096>
         class SmartArray
         {
-            static constexpr uint32_t shift = count_zero(TPageSize);
+            static constexpr uint32_t shift = CalcShift(TPageSize);
 
             static constexpr uint32_t mask = TPageSize - 1;
 

@@ -24,13 +24,11 @@
     <ClInclude Include="src\include\absl\container\flat_hash_map.h" />
     <ClInclude Include="src\include\absl\container\flat_hash_set.h" />
     <ClInclude Include="src\include\BenchHash.h" />
-    <ClInclude Include="src\include\fastmod.h" />
     <ClInclude Include="src\include\Judy.h" />
     <ClInclude Include="src\include\libcpuid.h" />
     <ClInclude Include="src\include\SimdHash.h" />
     <ClInclude Include="src\include\tsl\robin_map.h" />
     <ClInclude Include="src\include\tsl\robin_set.h" />
-    <ClInclude Include="src\include\xxhash.hpp" />
   </ItemGroup>
   <ItemGroup>
     <Library Include="libs\abseil-cpp.lib" />

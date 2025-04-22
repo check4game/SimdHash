@@ -450,6 +450,90 @@ namespace MZ
                 }
             }
 
+        protected:
+
+            void Rehash()
+            {
+                if (_Count != 0)
+                {
+                    RehashInternal(_tags.size());
+                }
+            }
+
+        private:
+
+            void RehashInternal(uint32_t size)
+            {
+                if constexpr (type == Type::Index)
+                {
+                    _tags.AdjustSize(size); _tags.Init();
+
+                    for (uint32_t realIndex = 0; realIndex < _Count; realIndex++)
+                    {
+                        auto tupleIndex = _hasher(_entries[realIndex].key);
+
+                        const auto tag = HashToTag(tupleIndex);
+
+                        tupleIndex = FindEmpty(tupleIndex);
+
+                        _tags[tupleIndex] = tag;
+
+                        _entries[tupleIndex].realIndex = realIndex;
+                    }
+                }
+                else
+                {
+                    TagsArray prevTags(std::move(_tags));
+
+                    _tags.AdjustSize(size); _tags.Init();
+
+                    const auto prevCount = _Count; _Count = 0;
+                    
+                    const auto prevTagsSize = prevTags.size() - TagVector::SIZE;
+
+                    for (uint32_t i = 0; i < prevTagsSize; i++)
+                    {
+                        if (prevTags[i] & TagVector::EMPTY) continue;
+
+                        auto prevEntry = _entries[i];
+
+                        auto prevTag = prevTags[i];
+
+                        prevTags[i] = TagVector::EMPTY;
+
+                        while (true)
+                        {
+                            auto emptyIndex = FindEmpty(_hasher(prevEntry.key));
+
+                            if (emptyIndex >= prevTagsSize || prevTags[emptyIndex] & TagVector::EMPTY)
+                            {
+                                _tags[emptyIndex] = prevTag;
+
+                                _entries[emptyIndex] = prevEntry;
+
+                                _Count++; break;
+                            }
+
+                            const auto saveTag = prevTags[emptyIndex];
+
+                            prevTags[emptyIndex] = TagVector::EMPTY;
+
+                            _tags[emptyIndex] = prevTag; prevTag = saveTag;
+
+                            const auto saveEntry = _entries[emptyIndex];
+
+                            _entries[emptyIndex] = prevEntry; prevEntry = saveEntry;
+
+                            _Count++;
+                        }
+                    }
+
+                    assert(prevCount == _Count);
+                }
+            }
+
+        public:
+
             void Resize(uint32_t size)
             {
                 if (_Capacity > AdjustCapacity(size)) return;
@@ -468,70 +552,7 @@ namespace MZ
                 }
                 else
                 {
-                    if constexpr (type == Type::Index)
-                    {
-                        _tags.AdjustSize(size); _tags.Init();
-                        
-                        for (uint32_t realIndex = 0; realIndex < _Count; realIndex++)
-                        {
-                            auto tupleIndex = _hasher(_entries[realIndex].key);
-
-                            const auto tag = HashToTag(tupleIndex);
-
-                            tupleIndex = FindEmpty(tupleIndex);
-
-                            _tags[tupleIndex] = tag;
-
-                            _entries[tupleIndex].realIndex = realIndex;
-                        }
-                    }
-                    else
-                    {
-                        TagsArray prevTags(std::move(_tags));
-
-                        _tags.AdjustSize(size); _tags.Init();
-
-                        auto prevCount = _Count; _Count = 0;
-
-                        for (uint32_t i = 0; i < prevTags.size(); i++)
-                        {
-                            if (prevTags[i] & TagVector::EMPTY) continue;
-
-                            auto prevEntry = _entries[i];
-
-                            auto prevTag = prevTags[i];
-
-                            prevTags[i] = TagVector::EMPTY;
-
-                            while (true)
-                            {
-                                auto emptyIndex = FindEmpty(_hasher(prevEntry.key));
-
-                                if (emptyIndex >= prevTags.size() || prevTags[emptyIndex] & TagVector::EMPTY)
-                                {
-                                    _tags[emptyIndex] = prevTag;
-
-                                    _entries[emptyIndex] = prevEntry;
-
-                                    _Count++; break;
-                                }
-
-                                const auto saveTag = prevTags[emptyIndex];
-
-                                prevTags[emptyIndex] = TagVector::EMPTY;
-
-                                _tags[emptyIndex] = prevTag; prevTag = saveTag;
-
-                                const auto saveEntry = _entries[emptyIndex];
-
-                                _entries[emptyIndex] = prevEntry; prevEntry = saveEntry;
-
-                                _Count++;
-                            }
-                        }
-
-                        assert(prevCount == _Count);
-                    }
+                    RehashInternal(size);
                 }
             }
 
@@ -931,6 +952,7 @@ namespace MZ
             }
 
             using core::Remove;
+            using core::Rehash;
         };
 
         template <typename TKey, class THash = Hash<TKey>, Mode mode = Mode::Fast, bool bFix = false>
@@ -953,6 +975,7 @@ namespace MZ
             }
 
             using core::Remove;
+            using core::Rehash;
         };
 
         template <typename TKey, class THash = Hash<TKey>, Mode mode = Mode::Fast, bool bFix = false>

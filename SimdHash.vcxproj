@@ -40,6 +40,22 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />
+    <None Include="results\11500\test1_128_random.py" />
+    <None Include="results\11500\test1_128_reuse_random.py" />
+    <None Include="results\11500\test1_128_simdhm_random.py" />
+    <None Include="results\11500\test2_128_reuse_random.py" />
+    <None Include="results\11500\test3_128_reuse_random.py" />
+    <None Include="results\11500\test4_128_reuse_random.py" />
+    <None Include="results\show_test.bat" />
+    <None Include="results\show_test.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="results\11500\test1_128_random.png" />
+    <Image Include="results\11500\test1_128_reuse_random.png" />
+    <Image Include="results\11500\test1_128_simdhm_random.png" />
+    <Image Include="results\11500\test2_128_reuse_random.png" />
+    <Image Include="results\11500\test3_128_reuse_random.png" />
+    <Image Include="results\11500\test4_128_reuse_random.png" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>

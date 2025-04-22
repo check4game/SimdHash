@@ -46,13 +46,9 @@ namespace MZ
                 if (mask & 0x0020) return 13;
                 if (mask & 0x0040) return 14;
                 if (mask & 0x0080) return 15;
+            }
 
-                return 16;
-            }
-            else
-            {
-                return _tzcnt_u32(mask);
-            }
+            return _tzcnt_u32(mask);
         }
 
         template <typename TKey>

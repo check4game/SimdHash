@@ -379,7 +379,7 @@ int main(int argc, char** argv)
     if (cmd == "help" || (TypeMask == 0 && cmd != "rnd" && cmd.find("selftest") == cmd.npos))
     {
         std::cout << std::endl;
-        std::cout << "SimdHash.exe run [max [min [step]]] [-simdhm|-simdhs|-simdhi|-tslrm|-abslfhm|-em7hm|-ankerlhm]" << std::endl;
+        std::cout << "SimdHash.exe run [max [min [step]]] [-simdhm|-simdhs|-simdhi|-abslfhm|-em7hm|-em8hm]" << std::endl;
         std::cout << std::endl;
 
         std::cout << "-simdhm MZ::SimdHash::Map, -simdhs MZ::SimdHash::Set, -simdhi MZ::SimdHash::Index" << std::endl;
@@ -401,8 +401,8 @@ int main(int argc, char** argv)
 
         std::cout << "-test1, only add/insert/emplace" << std::endl;
         std::cout << "-test2, remove(2%+2%), contains(4%+4%), add(2%+2%)" << std::endl;
-        std::cout << "-test3, contains(load, 1/2 reverse)" << std::endl;
-        std::cout << "-test4, contains(1%, 1% reverse), miss(1%)" << std::endl;
+        std::cout << "-test3, contains(15% load)" << std::endl;
+        std::cout << "-test4, contains(15% load reverse)" << std::endl;
 
         std::cout << std::endl;
 

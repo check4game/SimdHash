@@ -505,11 +505,16 @@ public:
 
             t_start = std::chrono::high_resolution_clock::now();
 
-            assert(TestContains(data_set.data(), static_cast<uint32_t>(load/2), true));
-            opCounter += load/2;
+            auto size = load * 5 / 100;
 
-            assert(TestContains(data_set.data() + load/2, static_cast<uint32_t>(load/2), false));
-            opCounter += load/2;
+            assert(TestContains(data_set.data(), static_cast<uint32_t>(size)));
+            opCounter += size;
+
+            assert(TestContains(data_set.data() + load / 2 - size / 2, static_cast<uint32_t>(size)));
+            opCounter += size;
+
+            assert(TestContains(data_set.data() + load - size, static_cast<uint32_t>(size)));
+            opCounter += size;
         }
 
         if (tt == TestType::TEST4)
@@ -518,14 +523,16 @@ public:
 
             t_start = std::chrono::high_resolution_clock::now();
 
-            assert(TestContains(data_set.data(), static_cast<uint32_t>(test_load)));
-            opCounter += test_load;
+            auto size = load * 5 / 100;
 
-            assert(!TestContains(unknown_vector.data(), static_cast<uint32_t>(test_load)));
-            opCounter += test_load;
+            assert(TestContains(data_set.data(), static_cast<uint32_t>(size), true));
+            opCounter += size;
 
-            assert(TestContains(data_set.data(), static_cast<uint32_t>(test_load), true));
-            opCounter += test_load;
+            assert(TestContains(data_set.data() + load / 2 - size / 2, static_cast<uint32_t>(size), true));
+            opCounter += size;
+
+            assert(TestContains(data_set.data() + load - size, static_cast<uint32_t>(size), true));
+            opCounter += size;
         }
 
         std::chrono::nanoseconds time = (std::chrono::high_resolution_clock::now() - t_start);

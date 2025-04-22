@@ -15,6 +15,9 @@
     <Filter Include="Results">
       <UniqueIdentifier>{88e37e35-78a2-4976-8b7b-2f6a7063527b}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Results\11500">
+      <UniqueIdentifier>{1036e05b-0fb6-4e24-aa31-2c4110fdc182}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Application.cpp">
@@ -76,5 +79,49 @@
     <None Include="README.md">
       <Filter>Source Files</Filter>
     </None>
+    <None Include="results\show_test.bat">
+      <Filter>Results</Filter>
+    </None>
+    <None Include="results\show_test.py">
+      <Filter>Results</Filter>
+    </None>
+    <None Include="results\11500\test1_128_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+    <None Include="results\11500\test1_128_reuse_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+    <None Include="results\11500\test1_128_simdhm_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+    <None Include="results\11500\test2_128_reuse_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+    <None Include="results\11500\test3_128_reuse_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+    <None Include="results\11500\test4_128_reuse_random.py">
+      <Filter>Results\11500</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="results\11500\test1_128_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
+    <Image Include="results\11500\test1_128_reuse_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
+    <Image Include="results\11500\test1_128_simdhm_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
+    <Image Include="results\11500\test2_128_reuse_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
+    <Image Include="results\11500\test3_128_reuse_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
+    <Image Include="results\11500\test4_128_reuse_random.png">
+      <Filter>Results\11500</Filter>
+    </Image>
   </ItemGroup>
 </Project>

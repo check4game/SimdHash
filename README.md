@@ -32,4 +32,7 @@ SimdHash.exe rnd [32|64|128|256]
 SimdHash.exe selftest
 run set of internal tests
 ```
-![](/results/11500/test1_128_reuse_random.png)
+![add key/value to empty hashmap](/results/11500/test1_128_reuse_random.png)
+
+
+![add key/value to new hashmap](/results/11500/test1_128_random.png)

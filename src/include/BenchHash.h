@@ -706,14 +706,17 @@ public:
 
     uint64_t KeysSum() override
     {
+        uint64_t sum = 0;
+
         if constexpr (isSimd<TObject>)
         {
-            return object->KeysSum();
+            for (const auto& entry : *object)
+            {
+                sum += entry.key;
+            }
         }
         else
         {
-            uint64_t sum = 0;
-
             if constexpr (isSet<TObject, TKey>)
             {
                 for (const auto& key : *object)
@@ -728,24 +731,18 @@ public:
                     sum += pair.first;
                 }
             }
-
-            return sum;
         }
+
+        return sum;
     }
 
     uint64_t ProbeCounter() override
     {
-        if constexpr (isSimd<TObject>)
-            return object->ProbeCounter();
-        else
             return 0;
     }
 
     uint64_t CmpCounter() override
     {
-        if constexpr (isSimd<TObject>)
-            return object->CmpCounter();
-        else
             return 0;
     }
 };

@@ -106,6 +106,11 @@ namespace MZ
                 xmm = _mm_set1_epi8(static_cast<int8_t>(v));
             }
 
+            explicit TagVector(const uint8_t* ptr)
+            {
+                xmm = _mm_loadu_si128((const __m128i*)ptr);
+            }
+
             operator __m128i() const { return xmm; }
 
             __forceinline void Load(const uint8_t* ptr)
@@ -132,12 +137,18 @@ namespace MZ
             __forceinline uint32_t GetEmptyOrTomeStoneMask() const
             {
                 return static_cast<uint32_t>
-                    (_mm_movemask_epi8(
-                        _mm_cmpeq_epi8(EMPTY_VECTOR,
+                    (_mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR,
                             _mm_and_si128(FORBIDDEN_VECTOR, *this))));
             }
 
-            __forceinline uint32_t GetCmpMask(const TagVector& vector) const
+            __forceinline static uint32_t GetTagMask(const uint8_t* ptr)
+            {
+                return static_cast<uint32_t>
+                    (~ _mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR,
+                            _mm_and_si128(FORBIDDEN_VECTOR, _mm_loadu_si128((const __m128i*)ptr)))) & 0xFFFF);
+            }
+
+            __forceinline uint32_t GetTagMask(const TagVector& vector) const
             {
                 return static_cast<uint32_t>(_mm_movemask_epi8(_mm_cmpeq_epi8(vector, *this)));
             }
@@ -155,41 +166,35 @@ namespace MZ
 
         enum class Type { Map, Set, Index };
 
-        template<typename TKey, typename TValue, Type T>
+        template<typename TKey, typename TValue, bool bMap>
         struct Entry;
 
         template<typename TKey, typename TValue>
-        struct Entry<TKey, TValue, Type::Map> {
+        struct Entry<TKey, TValue, true> {
             TKey key;
             TValue value;
         };
 
         template<typename TKey, typename TValue>
-        struct Entry<TKey, TValue, Type::Set> {
+        struct Entry<TKey, TValue, false> {
             TKey key;
-        };
-
-        template<typename TKey, typename TValue>
-        struct Entry<TKey, TValue, Type::Index> {
-            TKey key;
-            uint32_t realIndex;
         };
 
 #pragma pack(pop)
 
-        class TagsArray
+        class TagArray
         {
         public:
 
-            TagsArray() : _ptr(nullptr), _size(0) {}
+            TagArray() : _ptr(nullptr), _size(0) {}
 
-            TagsArray(TagsArray&& other) noexcept : _ptr(other._ptr), _size(other._size)
+            TagArray(TagArray&& other) noexcept : _ptr(other._ptr), _size(other._size)
             {
                 other._ptr = nullptr;
                 other._size = 0;
             }
 
-            ~TagsArray()
+            ~TagArray()
             {
                 Clear();
             }
@@ -208,46 +213,64 @@ namespace MZ
                 return _ptr[index];
             }
 
-            __forceinline const uint8_t& operator[](uint64_t index) const
+            __forceinline const uint8_t operator[](uint64_t index) const
             {
                 return _ptr[index];
             }
 
-            __forceinline uint8_t* begin() const { return _ptr; }
+            __forceinline uint8_t* begin() const
+            { 
+                return _ptr;
+            }
 
-            __forceinline uint8_t* end() const { return _ptr + _size; }
+            __forceinline uint8_t* end() const
+            {
+                return _ptr + _size; 
+            }
 
-            __forceinline const uint8_t* data() const { return _ptr; }
+            __forceinline const uint8_t* data() const
+            {
+                return _ptr;
+            }
 
             template<bool bUseStd = false>
             void Init()
             {
                 if constexpr (bUseStd)
                 {
-                    std::fill_n(begin(), size() - TagVector::SIZE, TagVector::EMPTY);
-                    std::fill_n(end() - TagVector::SIZE, TagVector::SIZE, TagVector::FORBIDDEN);
+                    std::fill_n(begin(), _size, TagVector::EMPTY);
+                    std::fill_n(end(), TagVector::SIZE, TagVector::FORBIDDEN);
                 }
                 else
                 {
-                    assert(0 == (size() % TagVector::SIZE));
+                    assert(0 == (_size % TagVector::SIZE));
 
                     auto padding = (TagVector::SIZE - (reinterpret_cast<uintptr_t>(begin()) & (TagVector::SIZE - 1))) & (TagVector::SIZE - 1);
 
                     if (0 != padding)
                     {
                         TagVector::EMPTY_VECTOR.Store<false>(begin());
-                    }
 
-                    for (uint8_t* ptr = begin() + padding; ptr < (end() - TagVector::SIZE); ptr += TagVector::SIZE)
+                        for (uint8_t* ptr = begin() + padding; ptr < end(); ptr += TagVector::SIZE)
+                        {
+                            TagVector::EMPTY_VECTOR.Store<true>(ptr);
+                        }
+
+                        TagVector::FORBIDDEN_VECTOR.Store<false>(end());
+                    }
+                    else
                     {
-                        TagVector::EMPTY_VECTOR.Store<true>(ptr);
-                    }
+                        for (uint8_t* ptr = begin(); ptr < end(); ptr += TagVector::SIZE)
+                        {
+                            TagVector::EMPTY_VECTOR.Store<true>(ptr);
+                        }
 
-                    TagVector::FORBIDDEN_VECTOR.Store<false>(end() - TagVector::SIZE);
+                        TagVector::FORBIDDEN_VECTOR.Store<true>(end());
+                    }
                 }
             }
 
-            uint32_t size() { return _size; }
+            uint32_t size() const { return _size; }
 
             void AdjustSize(uint32_t size)
             {
@@ -255,7 +278,7 @@ namespace MZ
 
                 if (_ptr) Clear();
 
-                _ptr = new uint8_t[size];
+                _ptr = new uint8_t[size + TagVector::SIZE];
 
                 _size = size;
             }
@@ -282,7 +305,7 @@ namespace MZ
         }
 
         template<typename TEntry, uint32_t TPageSize = 4096>
-        class SmartArray
+        class EntryArray
         {
             static constexpr uint32_t shift = CalcShift(TPageSize);
 
@@ -298,13 +321,13 @@ namespace MZ
 
             static constexpr uint32_t PageSize = (TPageSize != 0) ? TPageSize : 4096;
 
-            SmartArray() = default;
+            EntryArray() = default;
 
-            ~SmartArray()
+            ~EntryArray()
             {
                 if (_pages)
                 {
-                    if constexpr (TPageSize >= 1024)
+                    if constexpr (TPageSize > 0)
                     {
                         for (uint32_t i = 0; i < _capacity; i++)
                         {
@@ -322,7 +345,7 @@ namespace MZ
 
             __forceinline TEntry& operator[](uint64_t index)
             {
-                if constexpr (TPageSize >= 1024)
+                if constexpr (TPageSize > 0)
                     return _pages[index >> shift][index & mask];
                 else
                     return *_pages[index];
@@ -330,7 +353,7 @@ namespace MZ
 
             __forceinline const TEntry& operator[](uint64_t index) const
             {
-                if constexpr (TPageSize >= 1024)
+                if constexpr (TPageSize > 0)
                     return _pages[index >> shift][index & mask];
                 else
                     return *_pages[index];
@@ -338,7 +361,7 @@ namespace MZ
 
             void AdjustSize(uint32_t size)
             {
-                if constexpr (TPageSize >= 1024)
+                if constexpr (TPageSize > 0)
                 {
                     if ((size % TPageSize) != 0)
                     {
@@ -382,20 +405,33 @@ namespace MZ
             }
         };
 
+        template<typename TEntry, uint32_t TPageSize>
+        class IndexArray : public EntryArray<TEntry, TPageSize>
+        {
+        public:
+            EntryArray<uint32_t, TPageSize> _index;
+        };
+
         enum class Mode { Fast = 0, FastDivMod = 1, SaveMemoryFast = 2, SaveMemoryOpt = 4, SaveMemoryMax = 8 };
 
         template <typename TKey, typename TValue, Type type, class Hash, Mode mode = Mode::Fast, bool bFix = false>
         class Core
         {
         protected:
-            TagsArray _tags;
+            TagArray _tags;
 
-            SmartArray<Entry<TKey, TValue, type>> _entries;
+            using EntryType = Entry<TKey, TValue, type == Type::Map>;
+
+            using EntryArrayType = std::conditional_t<type == Type::Index,
+                IndexArray<EntryType, 4096>,
+                EntryArray<EntryType, 4096>>;
+
+            EntryArrayType _entries;
 
             const Hash _hasher;
 
         public:
-            static constexpr uint32_t MIN_SIZE = 2048;
+            static constexpr uint32_t MIN_SIZE = 4096;
             static constexpr uint32_t MAX_SIZE = 0x80000000; // 0x80000000 2'147'483'648
 
             void Clear(uint32_t size = 0)
@@ -412,10 +448,6 @@ namespace MZ
                 {
                     _tags.Init();
                 }
-
-#if defined(SIMDHASH_TEST)
-                PROBE_COUNTER = CMP_COUNTER = 0;
-#endif
             }
 
             uint32_t Count() const
@@ -478,20 +510,18 @@ namespace MZ
 
                         _tags[tupleIndex] = tag;
 
-                        _entries[tupleIndex].realIndex = realIndex;
+                        _entries._index[tupleIndex] = realIndex;
                     }
                 }
                 else
                 {
-                    TagsArray prevTags(std::move(_tags));
+                    TagArray prevTags(std::move(_tags));
 
                     _tags.AdjustSize(size); _tags.Init();
 
                     const auto prevCount = _Count; _Count = 0;
                     
-                    const auto prevTagsSize = prevTags.size() - TagVector::SIZE;
-
-                    for (uint32_t i = 0; i < prevTagsSize; i++)
+                    for (uint32_t i = 0; i < prevTags.size(); i++)
                     {
                         if (prevTags[i] & TagVector::EMPTY) continue;
 
@@ -505,7 +535,7 @@ namespace MZ
                         {
                             auto emptyIndex = FindEmpty(_hasher(prevEntry.key));
 
-                            if (emptyIndex >= prevTagsSize || prevTags[emptyIndex] & TagVector::EMPTY)
+                            if (emptyIndex >= prevTags.size() || prevTags[emptyIndex] & TagVector::EMPTY)
                             {
                                 _tags[emptyIndex] = prevTag;
 
@@ -540,19 +570,22 @@ namespace MZ
 
                 InitCapacity(size);
 
-                size = _Capacity + TagVector::SIZE;
-
-                if (size == _tags.size()) return;
+                if (_Capacity == _tags.size()) return;
 
                 _entries.AdjustSize(_Capacity);
 
+                if constexpr (type == Type::Index)
+                {
+                    _entries._index.AdjustSize(_Capacity);
+                }
+
                 if (_Count == 0)
                 {
-                    _tags.AdjustSize(size); _tags.Init();
+                    _tags.AdjustSize(_Capacity); _tags.Init();
                 }
                 else
                 {
-                    RehashInternal(size);
+                    RehashInternal(_Capacity);
                 }
             }
 
@@ -642,38 +675,6 @@ namespace MZ
                 max_load_factor(_max_load_factor);
             }
 
-#if defined(SIMDHASH_TEST)
-        protected:
-            uint64_t PROBE_COUNTER = 0, CMP_COUNTER = 0;
-
-        public:
-
-            uint64_t ProbeCounter() { return PROBE_COUNTER; }
-
-            uint64_t CmpCounter() { return CMP_COUNTER; }
-
-            uint64_t KeysSum()
-            {
-                uint64_t sum = 0;
-
-                for (uint32_t i = 0; i < _tags.size(); i++)
-                {
-                    if (_tags[i] < TagVector::EMPTY)
-                    {
-                        if constexpr (type == Type::Index)
-                        {
-                            sum += _entries[_entries[i].realIndex].key;
-                        }
-                        else
-                        {
-                            sum += _entries[i].key;
-                        }
-                    }
-                }
-
-                return sum;
-            }
-#endif
         protected:
 
             /// <summary>
@@ -703,13 +704,13 @@ namespace MZ
                 {
                     source.Load(_tags.data() + tupleIndex);
 
-                    auto resultMask = source.GetCmpMask(target);
+                    auto resultMask = source.GetTagMask(target);
 
                     while (resultMask)
                     {
                         if constexpr (type == Type::Index)
                         {
-                            const auto realIndex = _entries[tupleIndex + TrailingZeroCount<bFix>(resultMask)].realIndex;
+                            const auto realIndex = _entries._index[tupleIndex + TrailingZeroCount<bFix>(resultMask)];
 
                             if (key == _entries[realIndex].key)
                             {
@@ -778,18 +779,15 @@ namespace MZ
                     {
                         source.Load(_tags.data() + tupleIndex);
 
-                        auto resultMask = source.GetCmpMask(target);
+                        auto resultMask = source.GetTagMask(target);
 
                         while (resultMask)
                         {
-#if defined(SIMDHASH_TEST)
-                            CMP_COUNTER++;
-#endif
                             const auto entryIndex = tupleIndex + TrailingZeroCount<bFix>(resultMask);
 
                             if constexpr (type == Type::Index)
                             {
-                                const auto realIndex = _entries[entryIndex].realIndex;
+                                const auto realIndex = _entries._index[entryIndex];
 
                                 if (key == _entries[realIndex].key)
                                 {
@@ -821,9 +819,6 @@ namespace MZ
 
                         if (emptyMask = source.GetEmptyOrTomeStoneMask()) break;
 
-#if defined(SIMDHASH_TEST)
-                        PROBE_COUNTER++;
-#endif
                         tupleIndex = AdjustTupleIndex(tupleIndex + (jump += TagVector::SIZE));
                     }
                 }
@@ -835,9 +830,6 @@ namespace MZ
 
                         if (emptyMask = source.GetEmptyOrTomeStoneMask()) break;
 
-#if defined(SIMDHASH_TEST)
-                        PROBE_COUNTER++;
-#endif
                         tupleIndex = AdjustTupleIndex(tupleIndex + (jump += TagVector::SIZE));
                     }
                 }
@@ -850,7 +842,7 @@ namespace MZ
                 {
                     const auto realIndex = _Count;
 
-                    _entries[entryIndex].realIndex = realIndex;
+                    _entries._index[entryIndex] = realIndex;
 
                     _entries[realIndex].key = key;
 
@@ -908,11 +900,110 @@ namespace MZ
                 });
             }
 
-            Core() { Resize(0); }
+            class ConstIterator 
+            {
+            public:
 
-            uint32_t _Capacity, _CapacityMask;
+                ConstIterator(const Core* corePtr, uint32_t idx) : _corePtr(corePtr), _idx(idx)
+                {
+                    if constexpr (type != Type::Index)
+                    {
+                        if (idx == 0)
+                        {
+                            findMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
+
+                            Seek();
+                        }
+                    }
+                }
+                
+                const EntryType& operator*() const
+                {
+                    return _corePtr->_entries[_idx];
+                }
+
+                ConstIterator& operator++()
+                {
+                    if constexpr (type != Type::Index)
+                    {
+                        Seek();
+                    }
+                    else
+                    {
+                        _idx++;
+                    }
+
+                    return *this;
+                }
+
+                bool operator==(const ConstIterator& other) const
+                {
+                    return _idx == other._idx;
+                }
+
+                bool operator!=(const ConstIterator& other) const
+                {
+                    return _idx != other._idx;
+                }
+
+            private:
+
+                const Core* _corePtr;
+
+                uint32_t _idx, findMask = 0;
+
+                static constexpr uint32_t tupleMask = ~(TagVector::SIZE - 1);
+
+                __forceinline void Seek()
+                {
+                    static_assert(type != Type::Index);
+
+                    while (_idx < _corePtr->_tags.size())
+                    {
+                        while (findMask)
+                        {
+                            _idx = (_idx & tupleMask) + TrailingZeroCount<bFix>(findMask);
+
+                            findMask = ResetLowestSetBit(findMask);
+
+                            return;
+                        }
+
+                        _idx = (_idx & tupleMask) + TagVector::SIZE;
+
+                        findMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
+                    }
+                }
+            };
+
+            friend class ConstIterator;
+
+        public:
+
+            ConstIterator begin() const
+            {
+                return ConstIterator(this, 0);
+            }
+
+            ConstIterator end() const
+            {
+                if constexpr (type != Type::Index)
+                {
+                    return ConstIterator(this, _Capacity);
+                }
+                else
+                {
+                    return ConstIterator(this, _Count);
+                }
+            }
+
+        protected:
+
+            Core() { Resize(MIN_SIZE); }
+
+            uint32_t _Capacity = 0, _CapacityMask;
             
-            uint32_t _Count, _CountGrowthLimit;
+            uint32_t _Count = 0, _CountGrowthLimit;
 
             uint64_t _CapacityMultiplier;            
         };

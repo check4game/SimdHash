@@ -33,16 +33,29 @@ auto defaultLoc = std::cout.getloc();
 
 void TEST1()
 {
-    MZ::SimdHash::Map<uint64_t, uint64_t, MZ::SimdHash::Hash<uint64_t>, MZ::SimdHash::Mode::FastDivMod, true> hm;
+    using namespace std::chrono_literals;
 
-    hm.Resize((64 + 32 + 16) * 1024 * 1024 - 1);
+    MZ::SimdHash::Map<uint64_t, uint64_t, MZ::SimdHash::Hash<uint64_t>, MZ::SimdHash::Mode::Fast, true> hm;
 
-    for (uint32_t i = 0; i < 110'000'000; i++)
+    hm.Resize(90'000'000);
+
+    for (uint32_t i = 0; i < data_set.size() / 1'000'000; i++)
     {
-        hm.Add<true>(i, i);
-    }
+        hm.Clear();
 
-    std::cout << hm.Count();
+        for (uint32_t j = 0; j < ((i + 1) * 1'000'000); j++)
+        {
+            hm.Add<true>(data_set[j], j);
+        }
+
+        auto t_start = std::chrono::high_resolution_clock::now();
+
+        hm.Rehash();
+
+        std::chrono::nanoseconds time = (std::chrono::high_resolution_clock::now() - t_start);
+
+        std::cout << hm.Count() << ", " << time / 1.0s << std::endl;
+    }    
 }
 
 template <typename TKey>
@@ -88,8 +101,15 @@ void TEST()
     std::cout << "hm.AddUnique(11, 11)" << std::endl;
     RUN_TEST(hm.Contains(11));
     RUN_TEST(hm.TryGetValue(11, value) && value == 11);
+    
+    std::cout << "for (const auto& x : hm) [" << hm.Count() << "] = {";
 
-    std::cout << std::endl;
+    for (const auto x : hm)
+    {
+        std::cout << '{' << x.key << ", " << x.value << '}' << ", ";
+    }
+
+    std::cout << "\b\b" << '}' << std::endl;
     MZ::SimdHash::Index<TKey, MZ::SimdHash::Hash<TKey>> hi;
     std::cout << "<<< " << typeid(hi).name() << " >>>" << std::endl;
 
@@ -117,7 +137,14 @@ void TEST()
     RUN_TEST(!hi.TryAdd(4, index) && index == 3);
     RUN_TEST(!hi.Contains(5));
 
-    std::cout << std::endl;
+    std::cout << "for (const auto& x : hi) [" << hi.Count() << "] = {";
+
+    for (const auto& x : hi)
+    {
+        std::cout << x.key << ", ";
+    }
+
+    std::cout << "\b\b" << '}' << std::endl;
     MZ::SimdHash::Set<TKey, MZ::SimdHash::Hash<TKey>> hs;
     std::cout << "<<< " << typeid(hs).name() << " >>>" << std::endl;
 
@@ -143,6 +170,14 @@ void TEST()
     RUN_TEST(hs.Add(3));
     RUN_TEST(hs.Contains(3));
 
+    std::cout << "for (const auto& x : hs) [" << hs.Count() << "] = {";
+
+    for (const auto& x : hs)
+    {
+        std::cout << x.key << ", ";
+    }
+
+    std::cout << "\b\b" << '}' << std::endl;
 }
     
 std::vector<std::string> cmds = { "help", "run", "rnd", "selftest", "selftest1"};
@@ -443,13 +478,13 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    GetDataSet(filename, data_set, TypeSequential, bShuffle);
+
     if (cmd == "selftest1")
     {
         TEST1();
         return 0;
     }
-
-    GetDataSet(filename, data_set, TypeSequential, bShuffle);
 
     uint64_t maxLoad = data_set.size() - test_vector_size, startLoad = 1'000'000, stepLoad = 1'000'000;
 

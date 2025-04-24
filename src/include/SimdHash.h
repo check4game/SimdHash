@@ -910,7 +910,7 @@ namespace MZ
                     {
                         if (idx == 0)
                         {
-                            findMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
+                            _tagMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
 
                             Seek();
                         }
@@ -950,9 +950,9 @@ namespace MZ
 
                 const Core* _corePtr;
 
-                uint32_t _idx, findMask = 0;
+                uint32_t _idx, _tagMask = 0;
 
-                static constexpr uint32_t tupleMask = ~(TagVector::SIZE - 1);
+                static constexpr uint32_t _tupleMask = ~(TagVector::SIZE - 1);
 
                 __forceinline void Seek()
                 {
@@ -960,18 +960,16 @@ namespace MZ
 
                     while (_idx < _corePtr->_tags.size())
                     {
-                        while (findMask)
+                        while (_tagMask)
                         {
-                            _idx = (_idx & tupleMask) + TrailingZeroCount<bFix>(findMask);
+                            _idx = (_idx & _tupleMask) + TrailingZeroCount<bFix>(_tagMask);
 
-                            findMask = ResetLowestSetBit(findMask);
-
-                            return;
+                            _tagMask = ResetLowestSetBit(_tagMask); return;
                         }
 
-                        _idx = (_idx & tupleMask) + TagVector::SIZE;
+                        _idx = (_idx & _tupleMask) + TagVector::SIZE;
 
-                        findMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
+                        _tagMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
                     }
                 }
             };

@@ -141,26 +141,28 @@ namespace MZ
                             _mm_and_si128(FORBIDDEN_VECTOR, *this))));
             }
 
-            __forceinline static uint32_t GetTagMask(const uint8_t* ptr)
+            __forceinline static uint32_t GetNonEmptyMask(const uint8_t* ptr)
             {
                 return static_cast<uint32_t>
-                    (~ _mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR,
-                            _mm_and_si128(FORBIDDEN_VECTOR, _mm_loadu_si128((const __m128i*)ptr)))) & 0xFFFF);
+                    (_mm_movemask_epi8(_mm_cmpeq_epi8(ZERO_VECTOR,
+                            _mm_and_si128(EMPTY_VECTOR, _mm_loadu_si128((const __m128i*)ptr)))));
             }
 
-            __forceinline uint32_t GetTagMask(const TagVector& vector) const
+            __forceinline uint32_t GetCmpMask(const TagVector& vector) const
             {
                 return static_cast<uint32_t>(_mm_movemask_epi8(_mm_cmpeq_epi8(vector, *this)));
             }
 
-            static const TagVector EMPTY_VECTOR, FORBIDDEN_VECTOR;
+            static const TagVector EMPTY_VECTOR, FORBIDDEN_VECTOR, ZERO_VECTOR;
 
-            static constexpr uint8_t SIZE = 16, EMPTY = 0x80, TOMBSTONE = 0x81, FORBIDDEN = 0x82;
+            static constexpr uint8_t SIZE = 16, EMPTY = 0x80, TOMBSTONE = 0x81, FORBIDDEN = 0x82, ZERO = 0;
         };
 
         const TagVector TagVector::EMPTY_VECTOR = TagVector(TagVector::EMPTY);
 
         const TagVector TagVector::FORBIDDEN_VECTOR = TagVector(TagVector::FORBIDDEN);
+
+        const TagVector TagVector::ZERO_VECTOR = TagVector(TagVector::ZERO);
 
 #pragma pack(push, 1)
 
@@ -704,7 +706,7 @@ namespace MZ
                 {
                     source.Load(_tags.data() + tupleIndex);
 
-                    auto resultMask = source.GetTagMask(target);
+                    auto resultMask = source.GetCmpMask(target);
 
                     while (resultMask)
                     {
@@ -779,7 +781,7 @@ namespace MZ
                     {
                         source.Load(_tags.data() + tupleIndex);
 
-                        auto resultMask = source.GetTagMask(target);
+                        auto resultMask = source.GetCmpMask(target);
 
                         while (resultMask)
                         {
@@ -904,15 +906,27 @@ namespace MZ
             {
             public:
 
-                ConstIterator(const Core* corePtr, uint32_t idx) : _corePtr(corePtr), _idx(idx)
+                ConstIterator(const Core* corePtr, bool bBegin) : _corePtr(corePtr)
                 {
-                    if constexpr (type != Type::Index)
+                    if constexpr (type == Type::Index)
                     {
-                        if (idx == 0)
+                        if (!bBegin)
                         {
-                            _tagMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
-
-                            Seek();
+                            _idx = _corePtr->Count();
+                        }
+                    }
+                    else
+                    {
+                        if (_corePtr->Count())
+                        {
+                            if (bBegin)
+                            {
+                                _mask = TagVector::GetNonEmptyMask(_corePtr->_tags.data()); Seek();
+                            }
+                            else
+                            {
+                                _idx = _corePtr->Capacity();
+                            }
                         }
                     }
                 }
@@ -926,14 +940,12 @@ namespace MZ
                 {
                     if constexpr (type != Type::Index)
                     {
-                        Seek();
+                        Seek(); return *this;
                     }
                     else
                     {
-                        _idx++;
+                        _idx++; return *this;
                     }
-
-                    return *this;
                 }
 
                 bool operator==(const ConstIterator& other) const
@@ -950,9 +962,7 @@ namespace MZ
 
                 const Core* _corePtr;
 
-                uint32_t _idx, _tagMask = 0;
-
-                static constexpr uint32_t _tupleMask = ~(TagVector::SIZE - 1);
+                uint32_t _idx = 0, _base = 0, _mask = 0;
 
                 __forceinline void Seek()
                 {
@@ -960,16 +970,16 @@ namespace MZ
 
                     while (_idx < _corePtr->_tags.size())
                     {
-                        while (_tagMask)
+                        while (_mask)
                         {
-                            _idx = (_idx & _tupleMask) + TrailingZeroCount<bFix>(_tagMask);
+                            _idx = _base + TrailingZeroCount<bFix>(_mask);
 
-                            _tagMask = ResetLowestSetBit(_tagMask); return;
+                            _mask = ResetLowestSetBit(_mask); return;
                         }
 
-                        _idx = (_idx & _tupleMask) + TagVector::SIZE;
+                        _idx = (_base += TagVector::SIZE);
 
-                        _tagMask = TagVector::GetTagMask(_corePtr->_tags.data() + _idx);
+                        _mask = TagVector::GetNonEmptyMask(_corePtr->_tags.data() + _idx);
                     }
                 }
             };
@@ -980,24 +990,20 @@ namespace MZ
 
             ConstIterator begin() const
             {
-                return ConstIterator(this, 0);
+                return ConstIterator(this, true);
             }
 
             ConstIterator end() const
             {
-                if constexpr (type != Type::Index)
-                {
-                    return ConstIterator(this, _Capacity);
-                }
-                else
-                {
-                    return ConstIterator(this, _Count);
-                }
+                return ConstIterator(this, false);
             }
 
         protected:
 
-            Core() { Resize(MIN_SIZE); }
+            Core()
+            {
+                Resize(MIN_SIZE);
+            }
 
             uint32_t _Capacity = 0, _CapacityMask;
             

@@ -1,3 +1,8 @@
+#include <windows.h>
+
+#undef max
+#undef min
+
 #include <iostream>
 #include <vector>
 
@@ -179,13 +184,34 @@ void TEST()
 
     std::cout << "\b\b" << '}' << std::endl;
 }
-    
+
+LONG WINAPI HandleoException(struct _EXCEPTION_POINTERS* ExceptionInfo)
+{
+    EXCEPTION_RECORD* record = ExceptionInfo->ExceptionRecord;
+
+    switch (record->ExceptionCode) {
+    case STATUS_INTEGER_DIVIDE_BY_ZERO:
+        std::cerr << "INTEGER_DIVIDE_BY_ZERO detected!" << std::endl;
+        break;
+    case STATUS_ACCESS_VIOLATION:
+        std::cerr << "ACCESS_VIOLATION detected!" << std::endl;
+        break;
+    default:
+        std::cerr << "Exception Occurred, ExceptionCode=0x" << std::hex << record->ExceptionCode << std::endl;
+        break;
+    }
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 std::vector<std::string> cmds = { "help", "run", "rnd", "selftest", "selftest1"};
 
 extern std::vector<int> vector_data_set_size;
 
 int main(int argc, char** argv)
 {
+    SetUnhandledExceptionFilter(HandleoException);
+
     auto cmdIterator = std::find(cmds.begin(), cmds.end(), (argc > 1) ? argv[1] : cmds[0]);
 
     auto cmd = (cmdIterator == cmds.end()) ? cmds[0] : *cmdIterator;
@@ -380,6 +406,11 @@ int main(int argc, char** argv)
         {
             BenchFlags |= 0x0000'0001'0000'0000; continue;
         }
+
+        if (strcmp(argv[i], "-test5") == 0)
+        {
+            BenchFlags |= 0x0000'0000'1000'0000; continue;
+        }
     }
 
     if (!(BenchFlags & 0xFF)) BenchFlags |= 4;
@@ -438,6 +469,7 @@ int main(int argc, char** argv)
         std::cout << "-test2, remove(2%+2%), contains(4%+4%), add(2%+2%)" << std::endl;
         std::cout << "-test3, contains(15% load)" << std::endl;
         std::cout << "-test4, contains(15% load reverse)" << std::endl;
+        std::cout << "-test5, const iterator" << std::endl;
 
         std::cout << std::endl;
 

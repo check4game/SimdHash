@@ -1342,7 +1342,11 @@ class ABSL_DLL MixingHashState : public HashStateBase<MixingHashState> {
 #if (!defined(__clang__) || __clang_major__ > 11) && \
     (!defined(__apple_build_version__) ||            \
      __apple_build_version__ >= 19558921)  // Xcode 12
-    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&kSeed));
+#if defined(ABSL_HASH_SEED)
+      return ABSL_HASH_SEED;
+#else
+      return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&kSeed));
+#endif
 #else
     // Workaround the absence of
     // https://github.com/llvm/llvm-project/commit/bc15bf66dcca76cc06fe71fca35b74dc4d521021.

@@ -11,19 +11,21 @@
 #include <assert.h>
 #endif
 
+#include <malloc.h>
+
 namespace MZ
 {
     namespace SimdHash
     {
-        static constexpr uint32_t Build = 1023;
+        static constexpr uint32_t Build = 1024;
        
-        static __forceinline const uint32_t ResetLowestSetBit(const uint32_t value)
+        static __forceinline const uint64_t ResetLowestSetBit(const uint64_t value)
         {
             return value & (value - 1);
         }
 
         template <bool bFix>
-        static __forceinline const uint32_t TrailingZeroCount(uint32_t mask)
+        static __forceinline const uint32_t TrailingZeroCount(uint64_t mask)
         {
             if constexpr (bFix) // fix for old CPU
             {
@@ -35,20 +37,9 @@ namespace MZ
                 if (mask & 0x0020) return 5;
                 if (mask & 0x0040) return 6;
                 if (mask & 0x0080) return 7;
-
-                mask >>= 8;
-
-                if (mask & 0x0001) return 8;
-                if (mask & 0x0002) return 9;
-                if (mask & 0x0004) return 10;
-                if (mask & 0x0008) return 11;
-                if (mask & 0x0010) return 12;
-                if (mask & 0x0020) return 13;
-                if (mask & 0x0040) return 14;
-                if (mask & 0x0080) return 15;
             }
 
-            return _tzcnt_u32(mask);
+            return static_cast<uint32_t>(_tzcnt_u64(mask));
         }
 
         template <typename TKey>
@@ -88,9 +79,40 @@ namespace MZ
             return static_cast<uint32_t>(UINT64_C(0x1'0000'0000) >> __lzcnt(value - 1));
         }
 
+        template <uint8_t TagVectorSize>
+        struct TagVectorType;
+
+        template <>
+        struct TagVectorType<16>
+        {
+            using Type = __m128i;
+            using MaskType = uint32_t;
+        };
+
+        template <>
+        struct TagVectorType<32>
+        {
+            using Type = __m256i;
+            using MaskType = uint32_t;
+        };
+
+        template <>
+        struct TagVectorType<64> {
+            using Type = __m512i;
+            using MaskType = uint64_t;
+        };
+
+        template<uint8_t TagVectorSize>
         class TagVector
         {
-            __m128i xmm;
+            using MaskType = typename TagVectorType<TagVectorSize>::MaskType;
+
+            static_assert(TagVectorSize == 16 || TagVectorSize == 32 || TagVectorSize == 64,
+                "Only values of 16, 32 or 64 are allowed.");
+
+            using TagVectorType = typename TagVectorType<TagVectorSize>::Type;
+
+            TagVectorType xmm;
 
         public:
 
@@ -98,71 +120,163 @@ namespace MZ
 
             explicit TagVector(uint8_t v)
             {
-                xmm = _mm_set1_epi8(static_cast<int8_t>(v));
+                if constexpr (TagVectorSize == 16)
+                    xmm = _mm_set1_epi8(static_cast<int8_t>(v));
+                else if constexpr (TagVectorSize == 32)
+                    xmm = _mm256_set1_epi8(static_cast<int8_t>(v));
+                else
+                    xmm = _mm512_set1_epi8(static_cast<int8_t>(v));
             }
 
-            explicit TagVector(int v)
+            operator TagVectorType() const { return xmm; }
+
+            template <bool bAlign = false>
+            __forceinline static TagVectorType LoadVector(const uint8_t* ptr)
             {
-                xmm = _mm_set1_epi8(static_cast<int8_t>(v));
+                if constexpr (TagVectorSize == 16)
+                {
+                    if constexpr (bAlign)
+                        return _mm_load_si128((const __m128i*)ptr);
+                    else
+                        return _mm_loadu_si128((const __m128i*)ptr);
+                }
+                else if constexpr (TagVectorSize == 32)
+                {
+                    if constexpr (bAlign)
+                        return _mm256_load_si256((const __m256i*)ptr);
+                    else
+                        return _mm256_loadu_si256((const __m256i*)ptr);
+                }
+                else
+                {
+                    if constexpr (bAlign)
+                        return _mm512_load_si512((const __m512i*)ptr);
+                    else
+                        return _mm512_loadu_si512((const __m512i*)ptr);
+                }
             }
 
-            explicit TagVector(const uint8_t* ptr)
-            {
-                xmm = _mm_loadu_si128((const __m128i*)ptr);
-            }
-
-            operator __m128i() const { return xmm; }
-
+            template <bool bAlign = false>
             __forceinline void Load(const uint8_t* ptr)
             {
-                xmm = _mm_loadu_si128((const __m128i*)ptr);
+                xmm = LoadVector<bAlign>(ptr);
             }
-            
+
             template <bool bAlign, bool bStream = true>
             __forceinline void Store(uint8_t* ptr) const
             {
                 if constexpr (bAlign && bStream)
-                    _mm_stream_si128((__m128i*)ptr, xmm);
+                {
+                    if constexpr (TagVectorSize == 16)
+                        _mm_stream_si128((__m128i*)ptr, xmm);
+                    else if constexpr (TagVectorSize == 32)
+                        _mm256_stream_si256((__m256i*)ptr, xmm);
+                    else
+                        _mm512_stream_si512((__m256i*)ptr, xmm);
+                }
                 else if constexpr (bAlign)
-                    _mm_store_si128((__m128i*)ptr, xmm);
+                {
+                    if constexpr (TagVectorSize == 16)
+                        _mm_store_si128((__m128i*)ptr, xmm);
+                    else if constexpr (TagVectorSize == 32)
+                        _mm256_store_si256((__m256i*)ptr, xmm);
+                    else
+                        _mm512_store_si512((__m512i*)ptr, xmm);
+                }
                 else
-                    _mm_storeu_si128((__m128i*)ptr, xmm);
+                {
+                    if constexpr (TagVectorSize == 16)
+                        _mm_storeu_si128((__m128i*)ptr, xmm);
+                    else if constexpr (TagVectorSize == 32)
+                        _mm256_storeu_si256((__m256i*)ptr, xmm);
+                    else
+                        _mm512_storeu_si512((__m512i*)ptr, xmm);
+                }
             }
 
-            __forceinline uint32_t GetEmptyMask() const
+            __forceinline uint64_t GetEmptyMask() const
             {
-                return static_cast<uint32_t>(_mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR, *this)));
+                if constexpr (TagVectorSize == 16)
+                    return static_cast<MaskType>(_mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR, xmm)));
+                else if constexpr (TagVectorSize == 32)
+                    return static_cast<MaskType>(_mm256_movemask_epi8(_mm256_cmpeq_epi8(EMPTY_VECTOR, xmm)));
+                else
+                    return static_cast<MaskType>(_mm512_cmp_epi8_mask(EMPTY_VECTOR, xmm, _MM_CMPINT_EQ));
             }
 
-            __forceinline uint32_t GetEmptyOrTomeStoneMask() const
+            __forceinline uint64_t GetEmptyOrTomeStoneMask() const
             {
-                return static_cast<uint32_t>
-                    (_mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR,
-                            _mm_and_si128(FORBIDDEN_VECTOR, *this))));
+                if constexpr (TagVectorSize == 16)
+                    return static_cast<MaskType>(_mm_movemask_epi8
+                        (_mm_cmpeq_epi8(EMPTY_VECTOR,_mm_and_si128(FORBIDDEN_VECTOR, xmm))));
+                else if constexpr (TagVectorSize == 32)
+                    return static_cast<MaskType>(_mm256_movemask_epi8
+                        (_mm256_cmpeq_epi8(EMPTY_VECTOR, _mm256_and_si256(FORBIDDEN_VECTOR, xmm))));
+                else
+                    return static_cast<MaskType>(_mm512_cmp_epi8_mask(EMPTY_VECTOR,
+                        _mm512_and_si512(FORBIDDEN_VECTOR, xmm), _MM_CMPINT_EQ));
             }
 
-            __forceinline static uint32_t GetNonEmptyMask(const uint8_t* ptr)
+            template <bool bAlign>
+            __forceinline static uint64_t GetNonEmptyMask(const uint8_t* ptr)
             {
-                return static_cast<uint32_t>
-                    (_mm_movemask_epi8(_mm_cmpeq_epi8(ZERO_VECTOR,
-                            _mm_and_si128(EMPTY_VECTOR, _mm_loadu_si128((const __m128i*)ptr)))));
+                if constexpr (TagVectorSize == 16)
+                {
+                    return static_cast<MaskType>
+                        (_mm_movemask_epi8(_mm_cmpeq_epi8(ZERO_VECTOR,
+                            _mm_and_si128(EMPTY_VECTOR, LoadVector<bAlign>(ptr)))));
+                }
+                else if constexpr (TagVectorSize == 32)
+                {
+                    return static_cast<MaskType>
+                        (_mm256_movemask_epi8(_mm256_cmpeq_epi8(ZERO_VECTOR,
+                            _mm256_and_si256(EMPTY_VECTOR, LoadVector<bAlign>(ptr)))));
+                }
+                else
+                {
+                    return static_cast<MaskType>
+                        (_mm512_cmp_epi8_mask(ZERO_VECTOR,
+                            _mm512_and_si512(EMPTY_VECTOR, LoadVector<bAlign>(ptr)), _MM_CMPINT_EQ));
+                }
             }
 
-            __forceinline uint32_t GetCmpMask(const TagVector& vector) const
+            __forceinline uint64_t GetCmpMask(const TagVector& vector) const
             {
-                return static_cast<uint32_t>(_mm_movemask_epi8(_mm_cmpeq_epi8(vector, *this)));
+                if constexpr (TagVectorSize == 16)
+                    return static_cast<MaskType>(_mm_movemask_epi8(_mm_cmpeq_epi8(vector, xmm)));
+                else if constexpr (TagVectorSize == 32)
+                    return static_cast<MaskType>(_mm256_movemask_epi8(_mm256_cmpeq_epi8(vector, xmm)));
+                else
+                    return static_cast<MaskType>(_mm512_cmp_epi8_mask(vector, xmm, _MM_CMPINT_EQ));
             }
 
             static const TagVector EMPTY_VECTOR, FORBIDDEN_VECTOR, ZERO_VECTOR;
 
-            static constexpr uint8_t SIZE = 16, EMPTY = 0x80, TOMBSTONE = 0x81, FORBIDDEN = 0x82, ZERO = 0;
+            static constexpr uint8_t SIZE = sizeof(xmm), EMPTY = 0x80, TOMBSTONE = 0x81, FORBIDDEN = 0x82, ZERO = 0;
         };
 
-        const TagVector TagVector::EMPTY_VECTOR = TagVector(TagVector::EMPTY);
+        using TagVector16 = TagVector<16>;
 
-        const TagVector TagVector::FORBIDDEN_VECTOR = TagVector(TagVector::FORBIDDEN);
+        const TagVector16 TagVector16::EMPTY_VECTOR = TagVector16(TagVector16::EMPTY);
+        const TagVector16 TagVector16::FORBIDDEN_VECTOR = TagVector16(TagVector16::FORBIDDEN);
+        const TagVector16 TagVector16::ZERO_VECTOR = TagVector16(TagVector16::ZERO);
 
-        const TagVector TagVector::ZERO_VECTOR = TagVector(TagVector::ZERO);
+        using TagVector32 = TagVector<32>;
+
+        const TagVector32 TagVector32::EMPTY_VECTOR = TagVector32(TagVector32::EMPTY);
+        const TagVector32 TagVector32::FORBIDDEN_VECTOR = TagVector32(TagVector32::FORBIDDEN);
+        const TagVector32 TagVector32::ZERO_VECTOR = TagVector32(TagVector32::ZERO);
+
+#ifdef USE_AVX512
+        using TagVector64 = TagVector<64>;
+
+        const TagVector64 TagVector64::EMPTY_VECTOR = TagVector64(TagVector64::EMPTY);
+        const TagVector64 TagVector64::FORBIDDEN_VECTOR = TagVector64(TagVector64::FORBIDDEN);
+        const TagVector64 TagVector64::ZERO_VECTOR = TagVector64(TagVector64::ZERO);
+#endif
+
+        using TagVectorCore = TagVector16;
+        using TagVectorIterator = TagVector32;
 
 #pragma pack(push, 1)
 
@@ -172,18 +286,21 @@ namespace MZ
         struct Entry;
 
         template<typename TKey, typename TValue>
-        struct Entry<TKey, TValue, true> {
+        struct Entry<TKey, TValue, true>
+        {
             TKey key;
             TValue value;
         };
 
         template<typename TKey, typename TValue>
-        struct Entry<TKey, TValue, false> {
+        struct Entry<TKey, TValue, false>
+        {
             TKey key;
         };
 
 #pragma pack(pop)
 
+        template<typename TagVector>
         class TagArray
         {
         public:
@@ -205,7 +322,7 @@ namespace MZ
             {
                 if (_ptr)
                 {
-                    delete[] _ptr; _ptr = nullptr;
+                    _aligned_free(_ptr); _ptr = nullptr;
                 }
                 _size = 0;
             }
@@ -247,28 +364,12 @@ namespace MZ
                 {
                     assert(0 == (_size % TagVector::SIZE));
 
-                    auto padding = (TagVector::SIZE - (reinterpret_cast<uintptr_t>(begin()) & (TagVector::SIZE - 1))) & (TagVector::SIZE - 1);
-
-                    if (0 != padding)
+                    for (uint8_t* ptr = begin(); ptr < end(); ptr += TagVector::SIZE)
                     {
-                        TagVector::EMPTY_VECTOR.Store<false>(begin());
-
-                        for (uint8_t* ptr = begin() + padding; ptr < end(); ptr += TagVector::SIZE)
-                        {
-                            TagVector::EMPTY_VECTOR.Store<true>(ptr);
-                        }
-
-                        TagVector::FORBIDDEN_VECTOR.Store<false>(end());
+                        TagVector::EMPTY_VECTOR.Store<true, true>(ptr);
                     }
-                    else
-                    {
-                        for (uint8_t* ptr = begin(); ptr < end(); ptr += TagVector::SIZE)
-                        {
-                            TagVector::EMPTY_VECTOR.Store<true>(ptr);
-                        }
 
-                        TagVector::FORBIDDEN_VECTOR.Store<true>(end());
-                    }
+                    TagVector::FORBIDDEN_VECTOR.Store<true, true>(end());
                 }
             }
 
@@ -280,7 +381,7 @@ namespace MZ
 
                 if (_ptr) Clear();
 
-                _ptr = new uint8_t[size + TagVector::SIZE];
+                assert(nullptr != (_ptr = static_cast<uint8_t*>(_aligned_malloc(size + TagVector::SIZE, TagVector::SIZE))));
 
                 _size = size;
             }
@@ -416,17 +517,35 @@ namespace MZ
 
         enum class Mode { Fast = 0, FastDivMod = 1, SaveMemoryFast = 2, SaveMemoryOpt = 4, SaveMemoryMax = 8 };
 
+        template <typename EntryType, bool isIndex>
+        struct EntryArrayType;
+
+        template <typename EntryType>
+        struct EntryArrayType<EntryType, true>
+        {
+            using Type = IndexArray<EntryType, 4096>;
+        };
+
+        template <typename EntryType>
+        struct EntryArrayType<EntryType, false>
+        {
+            using Type = EntryArray<EntryType, 4096>;
+        };
+
         template <typename TKey, typename TValue, Type type, class Hash, Mode mode = Mode::Fast, bool bFix = false>
         class Core
         {
-        protected:
-            TagArray _tags;
+            using TagVector = TagVectorCore;
 
             using EntryType = Entry<TKey, TValue, type == Type::Map>;
 
-            using EntryArrayType = std::conditional_t<type == Type::Index,
-                IndexArray<EntryType, 4096>,
-                EntryArray<EntryType, 4096>>;
+            using EntryArrayType = typename EntryArrayType<EntryType, type == Type::Index>::Type;
+
+            using TagArrayType = TagArray<TagVector>;
+
+        protected:
+
+            TagArrayType _tags;
 
             EntryArrayType _entries;
 
@@ -767,7 +886,7 @@ namespace MZ
 
                 auto jump = static_cast<uint8_t>(0);
 
-                uint32_t emptyMask;
+                uint64_t emptyMask;
 
                 TagVector source;
 
@@ -904,6 +1023,8 @@ namespace MZ
 
             class ConstIterator 
             {
+                using TagVector = TagVectorIterator;
+
             public:
 
                 ConstIterator(const Core* corePtr, bool bBegin) : _corePtr(corePtr)
@@ -921,11 +1042,11 @@ namespace MZ
                         {
                             if (bBegin)
                             {
-                                _mask = TagVector::GetNonEmptyMask(_corePtr->_tags.data()); Seek();
+                                _mask = TagVector::GetNonEmptyMask<false>(_corePtr->_tags.data()); Seek();
                             }
                             else
                             {
-                                _idx = _corePtr->Capacity();
+                                _idx = _base = _corePtr->Capacity();
                             }
                         }
                     }
@@ -962,24 +1083,31 @@ namespace MZ
 
                 const Core* _corePtr;
 
-                uint32_t _idx = 0, _base = 0, _mask = 0;
+                uint32_t _idx = 0, _base = 0;
+
+                uint64_t _mask = 0;
 
                 __forceinline void Seek()
                 {
                     static_assert(type != Type::Index);
 
-                    while (_idx < _corePtr->_tags.size())
+                    while (true)
                     {
                         while (_mask)
                         {
-                            _idx = _base + TrailingZeroCount<bFix>(_mask);
+                            _idx = _base + TrailingZeroCount<false>(_mask);
 
                             _mask = ResetLowestSetBit(_mask); return;
                         }
 
-                        _idx = (_base += TagVector::SIZE);
+                        _base += TagVector::SIZE;
 
-                        _mask = TagVector::GetNonEmptyMask(_corePtr->_tags.data() + _idx);
+                        if (_base >= _corePtr->_tags.size())
+                        {
+                            _idx = _base; return;
+                        }
+                        
+                        _mask = TagVector::GetNonEmptyMask<true>(_corePtr->_tags.data() + _base);
                     }
                 }
             };

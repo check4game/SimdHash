@@ -12,6 +12,8 @@
 #include "tsl/robin_set.h"
 #include "tsl/robin_map.h"
 
+#define ABSL_HASH_SEED 0
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -83,7 +85,8 @@ enum class TestType
     TEST1,
     TEST2,
     TEST3,
-    TEST4
+    TEST4,
+    TEST5,
 };
 
 template <typename TKey>
@@ -183,6 +186,10 @@ void Bench(std::vector<uint64_t>& data_set, uint64_t startLoad, uint64_t maxLoad
     else if (BenchFlags & 0x0000'0001'0000'0000)
     {
         name = name + "/test4"; tt = TestType::TEST4;
+    }
+    else if (BenchFlags & 0x0000'0000'1000'0000)
+    {
+        name = name + "/test5"; tt = TestType::TEST5;
     }
     else
     {
@@ -415,6 +422,8 @@ public:
 
     void Bench(uint64_t BenchFlags, std::stringstream& result, std::vector<uint64_t>& data_set, uint64_t load, TestType tt) override
     {
+        auto memCheckpoint = GetCurrentMemoryUse();
+
         const auto capacity = Capacity();
 
         auto test_load = load / 100;
@@ -426,6 +435,8 @@ public:
         bool bReuse = (BenchFlags & 0x0000'1000'0000'0000);
 
         bool bUnique = (BenchFlags & 0x1000'0000'0000'0000);
+
+        memory_usage_start += (GetCurrentMemoryUse() - memCheckpoint); // fix mem usage
 
         if (tt == TestType::TEST1 || !bReuse)
         {
@@ -535,6 +546,48 @@ public:
             opCounter += size;
         }
 
+        if (tt == TestType::TEST5)
+        {
+            opCounter = 0;
+
+            t_start = std::chrono::high_resolution_clock::now();
+
+            uint64_t sum = 0;
+
+            if constexpr (!isSet<TObject, TKey>)
+            {
+                for (uint32_t i = 0; i < 10; i++)
+                {
+                    for (const auto& entry : *object)
+                    {
+                        opCounter++;
+
+                        if constexpr (isSimd<TObject>)
+                            sum += entry.value;
+                        else
+                            sum += entry.second;
+                    }
+                }
+            }
+            else
+            {
+                for (uint32_t i = 0; i < 10; i++)
+                {
+                    for (const auto& entry : *object)
+                    {
+                        opCounter++;
+
+                        if constexpr (isSimd<TObject>)
+                            sum += entry.key;
+                        else
+                            sum += entry.first;
+                    }
+                }
+            }
+        }
+
+        auto mem = (GetCurrentMemoryUse() - memory_usage_start);
+
         std::chrono::nanoseconds time = (std::chrono::high_resolution_clock::now() - t_start);
 
         uint64_t _KeysSum = 0;
@@ -542,26 +595,22 @@ public:
 
         assert(_KeysSum == KeysSum());
 
-        auto mem = (GetCurrentMemoryUse() - memory_usage_start);
-
         using namespace std::chrono_literals;
 
         std::cout << "time:" << std::setw(6) << std::fixed << std::setprecision(3)
             << time / 1.0s << std::setprecision(4) << "s, lf: " << load_factor()
-            << ", cnt:" << std::setw(12) << Count()
-            //<< ", op:" << std::setw(4) << time / 1ns / object.Count() << "ns";
-            << ", op:" << std::setw(4) << time / 1ns / opCounter << "ns";
-        /*
-        if (object.ProbeCounter() != 0 || object.CmpCounter() != 0)
-        {
-            std::cout << ", probe:" << std::setw(12) << object.ProbeCounter()
-                << ", cmp:" << std::setw(11) << object.CmpCounter();
-        }
-        */
+            << ", l:" << std::setw(12) << Count();
+
+        if (tt != TestType::TEST5)
+            std::cout << ", op:" << std::setw(4) << time / 1ns / opCounter << "ns";
+        else
+            std::cout << ", op:" << std::setw(5) << std::fixed << std::setprecision(2) << time / 1.0ns / opCounter << "ns";
 
         std::cout << "," << std::setw(12) << capacity << "," << std::setw(12) << Capacity() << ", ";
-        std::cout << std::setw(5) << std::fixed << std::setprecision(3) << mem / 1024.0 / 1024.0 / 1024.0 << ", ";
-        std::cout << mem / static_cast<double>(Capacity());
+        std::cout << std::setw(5) << std::fixed << std::setprecision(3) << mem / 1024.0 / 1024.0 / 1024.0;
+
+        std::cout << "," << std::setw(3) << mem / load;
+        std::cout << "," << std::setw(7) << std::fixed << std::setprecision(3) << mem / static_cast<double>(Capacity());
 
         std::cout << std::endl;
 
@@ -569,8 +618,12 @@ public:
         {
             result << std::setprecision(3) << "{\"time\":" << time / 1.0s;
             result << ",\"cnt\":" << Count();
-            //result << ",\"op\":" << time / 1ns / object.Count();
-            result << ",\"op\":" << time / 1ns / opCounter;
+
+            if (tt != TestType::TEST5)
+                result << ",\"op\":" << time / 1ns / opCounter;
+            else
+                result << ",\"op\":" << std::fixed << std::setprecision(2) << time / 1.0ns / opCounter;
+
             result << ",\"mem\":" << mem / 1024 / 1024;
             result << "}," << std::endl;
         }

@@ -204,6 +204,16 @@ namespace MZ
                     return static_cast<MaskType>(_mm512_cmp_epi8_mask(EMPTY_VECTOR, xmm, _MM_CMPINT_EQ));
             }
 
+            __forceinline static uint64_t GetEmptyMask(const uint8_t* ptr)
+            {
+                if constexpr (TagVectorSize == 16)
+                    return static_cast<MaskType>(_mm_movemask_epi8(_mm_cmpeq_epi8(EMPTY_VECTOR, LoadVector<false>(ptr))));
+                else if constexpr (TagVectorSize == 32)
+                    return static_cast<MaskType>(_mm256_movemask_epi8(_mm256_cmpeq_epi8(EMPTY_VECTOR, LoadVector<false>(ptr))));
+                else
+                    return static_cast<MaskType>(_mm512_cmp_epi8_mask(EMPTY_VECTOR, LoadVector<false>(ptr), _MM_CMPINT_EQ));
+            }
+
             __forceinline uint64_t GetEmptyOrTomeStoneMask() const
             {
                 if constexpr (TagVectorSize == 16)
@@ -407,7 +417,7 @@ namespace MZ
             return count;
         }
 
-        template<typename TEntry, uint32_t TPageSize = 4096>
+        template<typename TEntry, uint32_t TPageSize>
         class EntryArray
         {
             static constexpr uint32_t shift = CalcShift(TPageSize);
@@ -537,11 +547,11 @@ namespace MZ
         {
             using TagVector = TagVectorCore;
 
-            using EntryType = Entry<TKey, TValue, type == Type::Map>;
+            using EntryType = typename Entry<TKey, TValue, type == Type::Map>;
 
             using EntryArrayType = typename EntryArrayType<EntryType, type == Type::Index>::Type;
 
-            using TagArrayType = TagArray<TagVector>;
+            using TagArrayType = typename TagArray<TagVector>;
 
         protected:
 
@@ -990,15 +1000,11 @@ namespace MZ
             {
                 auto jump = static_cast<uint8_t>(0);
 
-                TagVector source;
-
                 tupleIndex = AdjustHash(tupleIndex);
 
                 while(true)
                 {
-                    source.Load(_tags.data() + tupleIndex);
-
-                    const auto emptyMask = source.GetEmptyMask();
+                    const auto emptyMask = TagVector::GetEmptyMask(_tags.data() + tupleIndex);
 
                     if (emptyMask)
                     {

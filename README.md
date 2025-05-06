@@ -3,7 +3,7 @@
 MZ::SimdHash:Map is now the fastest hashmap for uint64_t/uint32_t
 
 ```
-SimdHash, build: 1023, Date: Apr 22 2025 19:47:23
+SimdHash, build: 1024, Date: May  6 2025 20:37:16
 Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz, Comet Lake (Core i7), 8/16, 3.792GHz
 
 SimdHash.exe run [max [min [step]]] [-simdhm|-simdhs|-simdhi|-abslfhm|-em7hm|-em8hm]
@@ -25,6 +25,7 @@ SimdHash.exe run [max [min [step]]] [-simdhm|-simdhs|-simdhi|-abslfhm|-em7hm|-em
 -test2, remove(2%+2%), contains(4%+4%), add(2%+2%)
 -test3, contains(15% load)
 -test4, contains(15% load reverse)
+-test5, const iterator
 
 SimdHash.exe rnd [32|64|128|256]
 32|64|128|256  dataset size in MB, 128 by default

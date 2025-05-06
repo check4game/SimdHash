@@ -810,6 +810,13 @@ namespace MZ
                 max_load_factor(_max_load_factor);
             }
 
+        public:
+
+            __forceinline bool Contains(const TKey& key) const
+            {
+                return FindEntry<false>(key, [](const auto&) {});
+            }
+
         protected:
 
             /// <summary>
@@ -1181,11 +1188,6 @@ namespace MZ
                 return core::FindEntry<true>(key, [&value](const auto& _value) { value = _value; });
             }
 
-            __forceinline bool Contains(const TKey& key) const
-            {
-                return core::FindEntry<false>(key, [](const auto&) {});
-            }
-
             using core::Remove;
             using core::Rehash;
         };
@@ -1202,11 +1204,6 @@ namespace MZ
             __forceinline bool Add(const TKey& key)
             {
                 return core::Add<bUnique, false>(key, []() {});
-            }
-
-            __forceinline bool Contains(const TKey& key) const
-            {
-                return core::FindEntry<false>(key, [](const auto&) {});
             }
 
             using core::Remove;
@@ -1244,11 +1241,6 @@ namespace MZ
                 core::FindEntry(key, [&index](const auto& _index) { index = _index; });
 
                 return index;
-            }
-
-            __forceinline bool Contains(const TKey& key) const
-            {
-                return core::FindEntry<false>(key, [](const auto&) {});
             }
         };
     }

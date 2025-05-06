@@ -36,30 +36,56 @@ std::vector<uint64_t> data_set;
 
 auto defaultLoc = std::cout.getloc();
 
+template<bool bFix>
 void TEST1()
 {
     using namespace std::chrono_literals;
+   
+    //MZ::SimdHash::Index<uint64_t, MZ::SimdHash::Hash<uint64_t>, MZ::SimdHash::Mode::Fast, bFix> sh;
+    //MZ::SimdHash::Index<uint64_t, absl::Hash<uint64_t>, MZ::SimdHash::Mode::Fast, bFix> sh;
+    MZ::SimdHash::Index<uint64_t, absl::Hash<uint64_t>, MZ::SimdHash::Mode::ResizeOnlyEmpty, bFix> sh;
 
-    MZ::SimdHash::Map<uint64_t, uint64_t, MZ::SimdHash::Hash<uint64_t>, MZ::SimdHash::Mode::Fast, true> hm;
+    auto mem = GetCurrentMemoryUse();
 
-    hm.Resize(90'000'000);
+    sh.Resize(120'000'000);
 
-    for (uint32_t i = 0; i < data_set.size() / 1'000'000; i++)
+    std::cout << std::endl;
+    std::cout << "MZ::SimdHash::Index<uint64_t>.Resize(80'000'000) +" << (GetCurrentMemoryUse() - mem) / 1024 / 1024 << "mb, capacity=" << sh.Capacity() << std::endl;
+    std::cout << std::endl;
+
+    uint32_t step = 10'000'000, num = static_cast<uint32_t>(data_set.size() / step);
+
+    num = 64;
+
+    for (uint32_t i = 0; i < num; i++)
     {
-        hm.Clear();
+        sh.Clear();
 
-        for (uint32_t j = 0; j < ((i + 1) * 1'000'000); j++)
-        {
-            hm.Add<true>(data_set[j], j);
-        }
+        auto memAdd = GetCurrentMemoryUse();
 
         auto t_start = std::chrono::high_resolution_clock::now();
 
-        hm.Rehash();
+        for (uint32_t j = 0; j < ((i + 1) * step); j++)
+        {
+            //sh.Add<true>(data_set[j]);
+            sh.Add<true>(j);
+        }
 
-        std::chrono::nanoseconds time = (std::chrono::high_resolution_clock::now() - t_start);
+        auto timeAdd = (std::chrono::high_resolution_clock::now() - t_start) / 1.0s;
+        
+        std::cout << std::setw(11);
 
-        std::cout << hm.Count() << ", " << time / 1.0s << std::endl;
+        std::cout << sh.Count() << ", add=" << std::setw(5) << std::fixed << std::setprecision(3) << timeAdd << 's';
+        
+        std::string memAddString = '+' + std::to_string((GetCurrentMemoryUse() - memAdd) / 1024 / 1024);
+        std::cout << ',' << std::setw(5) << memAddString << "mb";
+
+        std::string memString = std::to_string((GetCurrentMemoryUse() - mem) / 1024 / 1024);
+        std::cout << ',' << std::setw(6) << memString << "mb";
+
+        std::cout << ", cap=" << sh.Capacity();
+
+        std::cout << std::endl;
     }    
 }
 
@@ -514,7 +540,11 @@ int main(int argc, char** argv)
 
     if (cmd == "selftest1")
     {
-        TEST1();
+        if (FlagMask & 0x2000)
+            TEST1<true>();
+        else
+            TEST1<false>();
+
         return 0;
     }
 

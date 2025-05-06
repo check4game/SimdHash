@@ -13,7 +13,6 @@
 #include "tsl/robin_map.h"
 
 #define ABSL_HASH_SEED 0
-
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -23,14 +22,17 @@
 #define EMH_SIZE_TYPE 0
 #include "hash_table8.hpp"
 
-
-#if defined(NDEBUG)
-#undef NDEBUG
-#include <assert.h>
-#define NDEBUG
-#else
-#include <assert.h>
+#if defined(assert)
+#undef assert
 #endif
+
+#define assert(cond) \
+    do {                \
+        if (!(cond)) {  \
+            fprintf(stderr, "%s:%d: Assertion failed in function '%s': %s\n", __FILE__, __LINE__, __FUNCSIG__, #cond); \
+            abort();    \
+        }               \
+    } while (false)
 
 #define HAS_METHOD(name) \
 template<typename T, typename... Args> \

@@ -114,6 +114,7 @@ namespace MZ
 
             TagVectorType xmm;
 
+            static TagVectorType xmm_zero;
         public:
 
             TagVector() = default;

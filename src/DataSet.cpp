@@ -140,7 +140,8 @@ void GenerateDataSet(const std::string& filename, uint64_t data_set_size)
 
         if (rc != 1) continue;
 
-        J1S(rc, JArrayMain, rnd & ~judyMask);
+        //J1S(rc, JArrayMain, rnd & ~judyMask);
+        J1S(rc, JArrayMain, rnd >> 32);
 
         if (rc != 1) continue;
 

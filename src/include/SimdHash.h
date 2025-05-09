@@ -54,30 +54,44 @@ namespace MZ
             return static_cast<uint32_t>(_tzcnt_u64(mask));
         }
 
-        template <typename TKey>
-        struct Hash 
-        {
-            uint64_t operator()(TKey const& key) const
-            {
-                static constexpr auto a = UINT64_C(11400714819323198485);
+        enum class HashType { Default, Fib, Absl};
 
-                if constexpr (std::is_same<TKey, uint64_t>::value)
+        template <typename TKey, HashType type = HashType::Absl>
+        struct Hash
+        {
+            static constexpr auto fib = UINT64_C(11400714819323198485);
+
+            static constexpr auto kMul = UINT64_C(0xdcb22ca68cb134ed);
+            
+            __forceinline static uint64_t hash(const uint64_t key)
+            {
+                if constexpr (type == HashType::Absl)
                 {
-                    return (key ^ (key >> 32)) * a;
+                    return (key ^ kMul) * kMul;
                 }
-                else if constexpr (std::is_same<TKey, uint32_t>::value)
+                else
                 {
-                    return (key ^ (key >> 16)) * a;
+                    return (key ^ fib) * fib;
                 }
-                else if constexpr (std::is_same<TKey, int64_t>::value)
+            }
+
+            __forceinline uint64_t operator()(const TKey& key) const noexcept
+            {
+                if constexpr (std::is_integral_v<TKey>)
                 {
-                    auto key0 = static_cast<uint64_t>(key);
-                    return (key0 ^ (key0 >> 32)) * a;
+                    return hash(static_cast<uint64_t>(key));
                 }
-                else if constexpr (std::is_same<TKey, int32_t>::value)
+                else if constexpr (std::is_same_v<TKey, float>)
                 {
-                    auto key0 = static_cast<uint32_t>(key);
-                    return (key0 ^ (key0 >> 16)) * a;
+                    return hash(static_cast<uint64_t>(*reinterpret_cast<const uint32_t*>(&key)));
+                }
+                else if constexpr (std::is_same_v<TKey, double>)
+                {
+                    return hash(*reinterpret_cast<uint64_t*>(&key));
+                }
+                else if constexpr (std::is_pointer_v<TKey>)
+                {
+                    return hash(reinterpret_cast<uint64_t>(key));
                 }
                 else
                 {
@@ -85,7 +99,7 @@ namespace MZ
                 }
             }
         };
-      
+
         static __forceinline uint32_t RoundUpToPowerOf2(uint32_t value)
         {
             return static_cast<uint32_t>(UINT64_C(0x1'0000'0000) >> __lzcnt(value - 1));
@@ -567,6 +581,8 @@ namespace MZ
 
             const Hash _hasher;
 
+            static constexpr uint8_t JumpInit = 8;
+
         public:
             static constexpr uint32_t MIN_SIZE = 4096;
             static constexpr uint32_t MAX_SIZE = 0x80000000; // 0x80000000 2'147'483'648
@@ -742,7 +758,18 @@ namespace MZ
 
                 if constexpr (mode == Mode::ResizeOnlyEmpty)
                 {
-                    return ((static_cast<uint32_t>(size / _max_load_factor) / TagVector::SIZE) + 1) * TagVector::SIZE;
+                    auto new_size = static_cast<uint64_t>(size / MAX_LOAD_FACTOR);
+
+                    if (new_size >= MAX_SIZE) return MAX_SIZE;
+
+                    if ((new_size % _entries.GetPageSize()) != 0)
+                    {
+                        new_size = (new_size / _entries.GetPageSize() + 1) * _entries.GetPageSize();
+                    }
+
+                    if (new_size >= MAX_SIZE) return MAX_SIZE;
+
+                    return static_cast<uint32_t>(new_size);
                 }
                 else if constexpr (mode > Mode::FastDivMod)
                 {
@@ -838,7 +865,7 @@ namespace MZ
 
                 tupleIndex = AdjustTupleIndex(tupleIndex);
 
-                auto jump = static_cast<uint8_t>(0);
+                auto jump = JumpInit;
 
                 TagVector source;
 
@@ -907,8 +934,6 @@ namespace MZ
 
                 tupleIndex = AdjustTupleIndex(tupleIndex);
 
-                auto jump = static_cast<uint8_t>(0);
-
                 uint64_t emptyMask;
 
                 TagVector source;
@@ -916,6 +941,8 @@ namespace MZ
                 if constexpr (!bUnique)
                 {
                     const TagVector target(tag);
+
+                    auto jump = JumpInit;
 
                     while (true)
                     {
@@ -966,6 +993,8 @@ namespace MZ
                 }
                 else
                 {
+                    auto jump = JumpInit;
+
                     while (true)
                     {
                         source.Load(_tags.data() + tupleIndex);
@@ -1014,9 +1043,9 @@ namespace MZ
 
             __forceinline uint32_t FindEmpty(uint64_t tupleIndex) const
             {
-                auto jump = static_cast<uint8_t>(0);
-
                 tupleIndex = AdjustTupleIndex(tupleIndex);
+
+                auto jump = JumpInit;
 
                 while(true)
                 {

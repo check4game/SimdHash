@@ -196,6 +196,11 @@ void Bench(std::vector<uint64_t>& data_set, uint64_t startLoad, uint64_t maxLoad
     else
     {
         name = name + "/test1"; tt = TestType::TEST1;
+
+        if (BenchFlags & 0x1000'0000'0000'0000) // AddUnique
+        {
+            name = name + "/unique";
+        }
     }
 
     assert(tt != TestType::UNKNOWN);

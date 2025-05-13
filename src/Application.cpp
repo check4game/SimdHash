@@ -170,9 +170,9 @@ void TEST()
 
     std::cout << "for (const auto& x : hi) [" << hi.Count() << "] = {";
 
-    for (const auto& x : hi)
+    for (const auto& key : hi)
     {
-        std::cout << x.key << ", ";
+        std::cout << key <<  ", ";
     }
 
     std::cout << "\b\b" << '}' << std::endl;
@@ -203,9 +203,9 @@ void TEST()
 
     std::cout << "for (const auto& x : hs) [" << hs.Count() << "] = {";
 
-    for (const auto& x : hs)
+    for (const auto& key : hs)
     {
-        std::cout << x.key << ", ";
+        std::cout << key << ", ";
     }
 
     std::cout << "\b\b" << '}' << std::endl;

@@ -146,17 +146,12 @@ namespace MZ
 
             explicit TagVector(uint8_t v)
             {
-                xmm = CreateVector(v);
-            }
-
-            __forceinline static TagVectorType CreateVector(uint8_t v)
-            {
                 if constexpr (TagVectorSize == 16)
-                    return _mm_set1_epi8(static_cast<int8_t>(v));
+                    xmm = _mm_set1_epi8(static_cast<int8_t>(v));
                 else if constexpr (TagVectorSize == 32)
-                    return _mm256_set1_epi8(static_cast<int8_t>(v));
+                    xmm = _mm256_set1_epi8(static_cast<int8_t>(v));
                 else
-                    return _mm512_set1_epi8(static_cast<int8_t>(v));
+                    xmm = _mm512_set1_epi8(static_cast<int8_t>(v));
             }
 
             operator TagVectorType() const { return xmm; }
@@ -237,7 +232,7 @@ namespace MZ
                 return GetEmptyMask(LoadVector(ptr));
             }
 
-            __forceinline static uint64_t GetEmptyMask(TagVectorType xmm)
+            __forceinline static uint64_t GetEmptyMask(const TagVectorType& xmm)
             {
                 if constexpr (TagVectorSize == 16)
                 {
@@ -581,8 +576,6 @@ namespace MZ
 
             const Hash _hasher;
 
-            static constexpr uint8_t JumpInit = 8;
-
         public:
             static constexpr uint32_t MIN_SIZE = 4096;
             static constexpr uint32_t MAX_SIZE = 0x80000000; // 0x80000000 2'147'483'648
@@ -865,7 +858,7 @@ namespace MZ
 
                 tupleIndex = AdjustTupleIndex(tupleIndex);
 
-                auto jump = JumpInit;
+                auto jump = static_cast<uint8_t>(0);
 
                 TagVector source;
 
@@ -942,7 +935,7 @@ namespace MZ
                 {
                     const TagVector target(tag);
 
-                    auto jump = JumpInit;
+                    auto jump = static_cast<uint8_t>(0);
 
                     while (true)
                     {
@@ -993,7 +986,7 @@ namespace MZ
                 }
                 else
                 {
-                    auto jump = JumpInit;
+                    auto jump = static_cast<uint8_t>(0);
 
                     while (true)
                     {
@@ -1045,7 +1038,7 @@ namespace MZ
             {
                 tupleIndex = AdjustTupleIndex(tupleIndex);
 
-                auto jump = JumpInit;
+                auto jump = static_cast<uint8_t>(0);
 
                 while(true)
                 {
@@ -1102,9 +1095,12 @@ namespace MZ
                     }
                 }
                 
-                const EntryType& operator*() const
+                const auto& operator*() const
                 {
-                    return _corePtr->_entries[_idx];
+                    if constexpr (type == Type::Map)
+                        return _corePtr->_entries[_idx];
+                    else
+                        return _corePtr->_entries[_idx].key;
                 }
 
                 ConstIterator& operator++()

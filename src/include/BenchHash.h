@@ -111,9 +111,6 @@ public:
 
     virtual float load_factor() const { return 0.0f; }
 
-    virtual uint64_t ProbeCounter() { return 0; }
-    virtual uint64_t CmpCounter() { return 0; }
-
     virtual uint64_t KeysSum() { return 0; }
 
     virtual std::string name() { return ""; }
@@ -437,13 +434,13 @@ public:
 
         MakeTestVector(data_set, load, test_load);
 
-        auto t_start = std::chrono::high_resolution_clock::now();
-
         bool bReuse = (BenchFlags & 0x0000'1000'0000'0000);
 
         bool bUnique = (BenchFlags & 0x1000'0000'0000'0000);
 
         memory_usage_start += (GetCurrentMemoryUse() - memCheckpoint); // fix mem usage
+
+        auto t_start = std::chrono::high_resolution_clock::now();
 
         if (tt == TestType::TEST1 || !bReuse)
         {
@@ -580,14 +577,11 @@ public:
             {
                 for (uint32_t i = 0; i < 10; i++)
                 {
-                    for (const auto& entry : *object)
+                    for (const auto& key : *object)
                     {
                         opCounter++;
 
-                        if constexpr (isSimd<TObject>)
-                            sum += entry.key;
-                        else
-                            sum += entry.first;
+                        sum += key;
                     }
                 }
             }
@@ -768,42 +762,25 @@ public:
     {
         uint64_t sum = 0;
 
-        if constexpr (isSimd<TObject>)
+        if constexpr (isSet<TObject, TKey>)
         {
-            for (const auto& entry : *object)
+            for (const auto& key : *object)
             {
-                sum += entry.key;
+                sum += key;
             }
         }
         else
         {
-            if constexpr (isSet<TObject, TKey>)
+            for (const auto& entry : *object)
             {
-                for (const auto& key : *object)
-                {
-                    sum += key;
-                }
-            }
-            else
-            {
-                for (const auto& pair : *object)
-                {
-                    sum += pair.first;
-                }
+                if constexpr (isSimd<TObject>)
+                    sum += entry.key;
+                else
+                    sum += entry.first;
             }
         }
 
         return sum;
-    }
-
-    uint64_t ProbeCounter() override
-    {
-            return 0;
-    }
-
-    uint64_t CmpCounter() override
-    {
-            return 0;
     }
 };
 

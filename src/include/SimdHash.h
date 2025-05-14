@@ -22,14 +22,25 @@ namespace MZ
     {
         static constexpr uint32_t Build = 1024;
        
-        static __forceinline const uint64_t ResetLowestSetBit(const uint64_t value)
+        template <typename TMask>
+        static __forceinline const TMask ResetLowestSetBit(const TMask mask)
         {
-            return value & (value - 1);
+            static_assert(
+                std::is_same_v<TMask, uint32_t> || std::is_same_v<TMask, uint64_t>,
+                "Template parameter must be either uint32_t or uint64_t"
+                );
+
+            return mask & (mask - 1);
         }
 
-        template <bool bFix>
-        static __forceinline const uint32_t TrailingZeroCount(uint64_t mask)
+        template <bool bFix, typename TMask>
+        static __forceinline const uint32_t TrailingZeroCount(TMask mask)
         {
+            static_assert(
+                std::is_same_v<TMask, uint32_t> || std::is_same_v<TMask, uint64_t>,
+                "Template parameter must be either uint32_t or uint64_t"
+                );
+
             if constexpr (bFix) // fix for old CPU
             {
                 if (mask & 0x0001) return 0;
@@ -51,8 +62,13 @@ namespace MZ
                 if (mask & 0x8000) return 15;
             }
 
-            return static_cast<uint32_t>(_tzcnt_u64(mask));
+            if constexpr (std::is_same_v<TMask, uint32_t>)
+                return _tzcnt_u32(mask);
+            else
+                return static_cast<uint32_t>(_tzcnt_u64(mask));
         }
+
+        inline static const uint64_t COMPILE_TIME_SEED = reinterpret_cast<uintptr_t>(&COMPILE_TIME_SEED);
 
         enum class HashType { Default, Fib, Absl};
 
@@ -102,7 +118,17 @@ namespace MZ
 
         static __forceinline uint32_t RoundUpToPowerOf2(uint32_t value)
         {
-            return static_cast<uint32_t>(UINT64_C(0x1'0000'0000) >> __lzcnt(value - 1));
+            if (!value || !ResetLowestSetBit(value)) return value;
+
+            value--;
+
+            value |= value >> 1;
+            value |= value >> 2;
+            value |= value >> 4;
+            value |= value >> 8;
+            value |= value >> 16;
+
+            return ++value;
         }
 
         template <uint8_t TagVectorSize>
@@ -131,7 +157,11 @@ namespace MZ
         template<uint8_t TagVectorSize>
         class TagVector
         {
+        public:
+
             using MaskType = typename TagVectorType<TagVectorSize>::MaskType;
+
+        private:
 
             static_assert(TagVectorSize == 16 || TagVectorSize == 32 || TagVectorSize == 64,
                 "Only values of 16, 32 or 64 are allowed.");
@@ -222,17 +252,17 @@ namespace MZ
                 }
             }
 
-            __forceinline uint64_t GetEmptyMask() const
+            __forceinline MaskType GetEmptyMask() const
             {
                 return GetEmptyMask(xmm);
             }
 
-            __forceinline static uint64_t GetEmptyMask(const uint8_t* ptr)
+            __forceinline static MaskType GetEmptyMask(const uint8_t* ptr)
             {
                 return GetEmptyMask(LoadVector(ptr));
             }
 
-            __forceinline static uint64_t GetEmptyMask(const TagVectorType& xmm)
+            __forceinline static MaskType GetEmptyMask(const TagVectorType& xmm)
             {
                 if constexpr (TagVectorSize == 16)
                 {
@@ -248,7 +278,7 @@ namespace MZ
                 }
             }
 
-            __forceinline uint64_t GetEmptyOrTomeStoneMask() const
+            __forceinline MaskType GetEmptyOrTomeStoneMask() const
             {
                 if constexpr (TagVectorSize == 16)
                 {
@@ -268,7 +298,7 @@ namespace MZ
             }
 
             template <Mode mode = Mode::Default>
-            __forceinline static uint64_t GetNonEmptyMask(const uint8_t* ptr)
+            __forceinline static MaskType GetNonEmptyMask(const uint8_t* ptr)
             {
                 if constexpr (TagVectorSize == 16)
                 {
@@ -290,7 +320,7 @@ namespace MZ
                 }
             }
 
-            __forceinline uint64_t GetCmpMask(const TagVector& vector) const
+            __forceinline MaskType GetCmpMask(const TagVector& vector) const
             {
                 if constexpr (TagVectorSize == 16)
                     return static_cast<MaskType>(_mm_movemask_epi8(_mm_cmpeq_epi8(vector, xmm)));
@@ -561,6 +591,8 @@ namespace MZ
         class Core
         {
             using TagVector = TagVectorCore;
+
+            using MaskType = typename TagVector::MaskType;
 
             using EntryType = typename EntryArrayType<TKey, TValue, type>::EntryType;
 
@@ -879,8 +911,7 @@ namespace MZ
                                 FUNCTION(realIndex); return true;
                             }
                         }
-
-                        if constexpr (type == Type::Set)
+                        else if constexpr (type == Type::Set)
                         {
                             const auto realIndex = tupleIndex + TrailingZeroCount<bFix>(resultMask);
 
@@ -889,8 +920,7 @@ namespace MZ
                                 FUNCTION(realIndex); return true;
                             }
                         }
-
-                        if constexpr (type == Type::Map)
+                        else if constexpr (type == Type::Map)
                         {
                             const auto realIndex = tupleIndex + TrailingZeroCount<bFix>(resultMask);
 
@@ -927,7 +957,7 @@ namespace MZ
 
                 tupleIndex = AdjustTupleIndex(tupleIndex);
 
-                uint64_t emptyMask;
+                MaskType emptyMask;
 
                 TagVector source;
 
@@ -958,13 +988,11 @@ namespace MZ
                                     return false;
                                 }
                             }
-
-                            if constexpr (type == Type::Set)
+                            else if constexpr (type == Type::Set)
                             {
                                 if (key == _entries[entryIndex].key) return false;
                             }
-
-                            if constexpr (type == Type::Map)
+                            else if constexpr (type == Type::Map)
                             {
                                 auto& entry = _entries[entryIndex];
 
@@ -1017,13 +1045,11 @@ namespace MZ
 
                     if constexpr (bUpdate) FUNCTION(realIndex);
                 }
-
-                if constexpr (type == Type::Set)
+                else if constexpr (type == Type::Set)
                 {
                     _entries[entryIndex].key = key;
                 }
-
-                if constexpr (type == Type::Map)
+                else if constexpr (type == Type::Map)
                 {
                     auto& entry = _entries[entryIndex];
                     entry.key = key; FUNCTION(entry.value);
@@ -1069,7 +1095,9 @@ namespace MZ
             {
                 using TagVector = TagVectorIterator;
 
-                __forceinline uint64_t CalcMask()
+                using MaskType = typename TagVector::MaskType;
+
+                __forceinline MaskType CalcMask()
                 {
                     return TagVector::GetNonEmptyMask<TagVector::Mode::Align>(_corePtr->_tags.data() + _base);
                 }
@@ -1124,7 +1152,7 @@ namespace MZ
 
                 uint32_t _idx, _base;
 
-                uint64_t _mask = 0;
+                MaskType _mask = 0;
 
                 __forceinline void Seek()
                 {

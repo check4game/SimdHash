@@ -62,25 +62,6 @@ HAS_METHOD(TryGetIndex)
 template <typename T, typename TKey>
 constexpr bool isIndex = has_TryGetIndex<T, const TKey&, uint32_t&>();
 
-constexpr float CalcLoadFactor(uint32_t value) noexcept
-{
-    if (value < 16) value = 16; else if (value > 1'000) value = 1'000;
-
-    auto power = value * 1000;
-
-    value = power + 1;
-
-    power |= power >> 1;
-    power |= power >> 2;
-    power |= power >> 4;
-    power |= power >> 8;
-    power |= power >> 16;
-
-    power++;
-
-    return static_cast<float>(static_cast<double>(value) / power);
-}
-
 enum class TestType
 {
     UNKNOWN = 0,
@@ -366,7 +347,7 @@ public:
         return s; 
     }
 
-    static constexpr auto max_load_factor = CalcLoadFactor(16);
+    static constexpr auto max_load_factor = 16'000.0 / (16 * 1024); //0,9765625
 
     virtual void Init(uint32_t reserve, bool bReuse, TestType tt)
     {

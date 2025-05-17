@@ -41,7 +41,7 @@ namespace MZ
                 "Template parameter must be either uint32_t or uint64_t"
                 );
 
-            if constexpr (bFix) // fix for old CPU
+            if constexpr (bFix && std::is_same_v<TMask, uint32_t>) // fix for old CPU
             {
                 if (mask & 0x0001) return 0;
                 if (mask & 0x0002) return 1;
@@ -698,30 +698,41 @@ namespace MZ
                     _tags.AdjustSize(size); _tags.Init();
 
                     const auto prevCount = _Count; _Count = 0;
-                    
+
                     for (uint32_t i = 0; i < prevTags.size(); i++)
                     {
-                        if (prevTags[i] & TagVector::EMPTY) continue;
-
-                        auto prevEntry = _entries[i];
-
                         auto prevTag = prevTags[i];
+
+                        if (prevTag & TagVector::EMPTY) continue;
+
+                        const auto& iEntryRef = _entries[i];
+
+                        auto emptyIndex = FindEmpty(_hasher(iEntryRef.key));
 
                         prevTags[i] = TagVector::EMPTY;
 
+                        if (emptyIndex == i)
+                        {
+                            _tags[i] = prevTag;
+
+                            // emptyIndex == i, _entries[i] = iEntryRef;
+
+                            _Count++; continue;
+                        }
+
+                        if (emptyIndex >= prevTags.size() || prevTags[emptyIndex] & TagVector::EMPTY)
+                        {
+                            _tags[emptyIndex] = prevTag;
+
+                            _entries[emptyIndex] = iEntryRef;
+
+                            _Count++; continue;
+                        }
+
+                        auto prevEntry = iEntryRef;
+
                         while (true)
                         {
-                            auto emptyIndex = FindEmpty(_hasher(prevEntry.key));
-
-                            if (emptyIndex >= prevTags.size() || prevTags[emptyIndex] & TagVector::EMPTY)
-                            {
-                                _tags[emptyIndex] = prevTag;
-
-                                _entries[emptyIndex] = prevEntry;
-
-                                _Count++; break;
-                            }
-
                             const auto saveTag = prevTags[emptyIndex];
 
                             prevTags[emptyIndex] = TagVector::EMPTY;
@@ -733,6 +744,17 @@ namespace MZ
                             _entries[emptyIndex] = prevEntry; prevEntry = saveEntry;
 
                             _Count++;
+
+                            emptyIndex = FindEmpty(_hasher(prevEntry.key));
+
+                            if (emptyIndex >= prevTags.size() || prevTags[emptyIndex] & TagVector::EMPTY)
+                            {
+                                _tags[emptyIndex] = prevTag;
+
+                                _entries[emptyIndex] = prevEntry;
+
+                                _Count++; break;
+                            }
                         }
                     }
 
